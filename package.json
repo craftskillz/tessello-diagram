@@ -1,0 +1,17 @@
+{
+  "name": "@tessello/diagram",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Diagram: draw shapes and the arrows that connect them, as a Tessello Module.",
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.ts"
+  },
+  "dependencies": {
+    "@tessello/sdk": "0.1.0"
+  },
+  "devDependencies": {
+    "esbuild-svelte": "^0.9.5",
+    "svelte": "^5.57.2"
+  }
+}
