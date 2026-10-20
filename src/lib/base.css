@@ -40,9 +40,37 @@ body {
   overflow: hidden;
 }
 
-/* ── The colors of shapes, by palette key, light then dark: fill, outline and text ── */
+/* ── The colors of shapes, by palette key (those of the original), light then dark: fill, outline and text ── */
 .c-gray { --fill: #f5f5f4; --stroke: #a8a29e; --text: #292524; }
 .dark .c-gray { --fill: #292524; --stroke: #78716c; --text: #e7e5e4; }
+.c-slate { --fill: #f1f5f9; --stroke: #64748b; --text: #0f172a; }
+.dark .c-slate { --fill: #1e293b; --stroke: #64748b; --text: #e2e8f0; }
+.c-blue { --fill: #dbeafe; --stroke: #3b82f6; --text: #1e40af; }
+.dark .c-blue { --fill: #172554; --stroke: #3b82f6; --text: #bfdbfe; }
+.c-sky { --fill: #e0f2fe; --stroke: #0ea5e9; --text: #0c4a6e; }
+.dark .c-sky { --fill: #082f49; --stroke: #0ea5e9; --text: #bae6fd; }
+.c-cyan { --fill: #cffafe; --stroke: #06b6d4; --text: #164e63; }
+.dark .c-cyan { --fill: #083344; --stroke: #06b6d4; --text: #a5f3fc; }
+.c-teal { --fill: #ccfbf1; --stroke: #14b8a6; --text: #134e4a; }
+.dark .c-teal { --fill: #042f2e; --stroke: #14b8a6; --text: #99f6e4; }
+.c-green { --fill: #dcfce7; --stroke: #22c55e; --text: #166534; }
+.dark .c-green { --fill: #052e16; --stroke: #22c55e; --text: #bbf7d0; }
+.c-lime { --fill: #ecfccb; --stroke: #84cc16; --text: #365314; }
+.dark .c-lime { --fill: #1a2e05; --stroke: #84cc16; --text: #d9f99d; }
+.c-amber { --fill: #fef9c3; --stroke: #f59e0b; --text: #78350f; }
+.dark .c-amber { --fill: #451a03; --stroke: #f59e0b; --text: #fde68a; }
+.c-orange { --fill: #ffedd5; --stroke: #f97316; --text: #7c2d12; }
+.dark .c-orange { --fill: #431407; --stroke: #f97316; --text: #fed7aa; }
+.c-red { --fill: #fee2e2; --stroke: #ef4444; --text: #7f1d1d; }
+.dark .c-red { --fill: #450a0a; --stroke: #ef4444; --text: #fecaca; }
+.c-rose { --fill: #ffe4e6; --stroke: #f43f5e; --text: #881337; }
+.dark .c-rose { --fill: #4c0519; --stroke: #f43f5e; --text: #fecdd3; }
+.c-pink { --fill: #fce7f3; --stroke: #ec4899; --text: #831843; }
+.dark .c-pink { --fill: #500724; --stroke: #ec4899; --text: #fbcfe8; }
+.c-purple { --fill: #ede9fe; --stroke: #8b5cf6; --text: #4c1d95; }
+.dark .c-purple { --fill: #2e1065; --stroke: #8b5cf6; --text: #ddd6fe; }
+.c-indigo { --fill: #e0e7ff; --stroke: #6366f1; --text: #312e81; }
+.dark .c-indigo { --fill: #1e1b4b; --stroke: #6366f1; --text: #c7d2fe; }
 
 /* ── The buttons of the toolbar and the sidebar ───────────────────────────── */
 .dg-btn {

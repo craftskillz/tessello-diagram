@@ -23,7 +23,9 @@
       {/if}
       {#if diagrams.open}
         <Toolbar />
-        <Canvas diagram={diagrams.open} />
+        <div class="dg-stage">
+          <Canvas diagram={diagrams.open} />
+        </div>
       {:else}
         <p class="dg-message">{t("empty_state")}</p>
       {/if}
@@ -43,6 +45,11 @@
     min-width: 0;
     display: flex;
     flex-direction: column;
+  }
+  .dg-stage {
+    flex: 1;
+    min-height: 0;
+    display: flex;
   }
   .dg-message {
     margin: auto;

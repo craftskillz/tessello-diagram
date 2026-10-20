@@ -2,15 +2,19 @@
   // The canvas of the open diagram, drawn in SVG from its model alone (lib/diagram.ts): what is drawn and what a click
   // finds both come from the shapes and arrows, through lib/geometry.ts. A gesture changes the model as it goes and
   // saves it when it ends.
-  import { type Diagram, newArrow, newId, newShape, removeShape } from "../lib/diagram.ts";
-  import { arrowEnds, arrowHead, type Endpoint, isAttached, type Point, shapeAt } from "../lib/geometry.ts";
+  import { type Diagram, keepsRatio, newArrow, newId, newShape, removeShape, type Shape } from "../lib/diagram.ts";
+  import { arrowEnds, arrowHead, type Box, type Corner, cornerSign, degrees, type Endpoint, isAttached, type Point, resizeBox, shapeAt } from "../lib/geometry.ts";
   import { t } from "../lib/i18n.ts";
   import { save, type Tool, ui } from "../lib/store.svelte.ts";
+  import { canvasMeasure } from "../lib/text.ts";
+  import ShapePanel from "./ShapePanel.svelte";
+  import ShapeView from "./ShapeView.svelte";
 
   let { diagram }: { diagram: Diagram } = $props();
 
   const HEAD = 10;
-  const LINE_HEIGHT = 1.25;
+  const CORNERS: Corner[] = ["nw", "ne", "se", "sw"];
+  const measure = canvasMeasure();
 
   let svg = $state<SVGSVGElement>();
   /** The canvas shows the drawing moved by `pan` (in pixels of the screen) and scaled by `zoom`. */
@@ -20,8 +24,10 @@
 
   type Gesture =
     | { kind: "pan"; from: Point; pan: Point }
-    | { kind: "move"; id: string; offset: Point; moved: boolean }
-    | { kind: "arrow"; from: string; to: Point };
+    | { kind: "move"; id: string; from: Point; starts: { id: string; x: number; y: number }[]; moved: boolean }
+    | { kind: "arrow"; from: string; to: Point }
+    | { kind: "resize"; id: string; corner: Corner; from: Point; start: Box; moved: boolean }
+    | { kind: "rotate"; id: string; text: boolean; moved: boolean };
   let gesture = $state<Gesture | null>(null);
 
   /** The shape whose text is being edited, and the text typed so far. */
@@ -35,11 +41,14 @@
     ),
   );
   const nextZ = () => Math.max(-1, ...diagram.shapes.map((shape) => shape.z), ...diagram.arrows.map((arrow) => arrow.z)) + 1;
+  const selectedShapes = $derived(diagram.shapes.filter((shape) => ui.selection.includes(shape.id)));
+  /** The shape that shows the handles to resize and turn it: a single selected shape. */
+  const withHandles = $derived(selectedShapes.length === 1 && !editing ? selectedShapes[0] : undefined);
 
   // A diagram opens with its origin in the middle of the canvas, and nothing selected.
   $effect(() => {
     void diagram.id;
-    ui.selected = null;
+    ui.selection = [];
     editing = null;
     zoom = 1;
     if (svg) pan = { x: svg.clientWidth / 2, y: svg.clientHeight / 2 };
@@ -50,21 +59,35 @@
     return { x: (event.clientX - box.left - pan.x) / zoom, y: (event.clientY - box.top - pan.y) / zoom };
   }
 
+  function capture(event: PointerEvent, started: Gesture) {
+    event.stopPropagation();
+    gesture = started;
+    svg!.setPointerCapture(event.pointerId);
+  }
+
   function onPointerDown(event: PointerEvent) {
     if (editing) return;
     if (event.button === 1 || (event.button === 0 && spaceHeld)) {
       event.preventDefault();
-      gesture = { kind: "pan", from: { x: event.clientX, y: event.clientY }, pan: { ...pan } };
-    } else if (event.button === 0) {
-      const at = toDrawing(event);
-      const shape = shapeAt(diagram.shapes, at);
-      if (ui.tool === "arrow" && shape) gesture = { kind: "arrow", from: shape.id, to: at };
-      else if (shape) {
-        ui.selected = shape.id;
-        gesture = { kind: "move", id: shape.id, offset: { x: at.x - shape.x, y: at.y - shape.y }, moved: false };
-      } else ui.selected = null;
+      return capture(event, { kind: "pan", from: { x: event.clientX, y: event.clientY }, pan: { ...pan } });
     }
-    if (gesture) svg!.setPointerCapture(event.pointerId);
+    if (event.button !== 0) return;
+    const at = toDrawing(event);
+    const shape = shapeAt(diagram.shapes, at);
+    if (ui.tool === "arrow" && shape) return capture(event, { kind: "arrow", from: shape.id, to: at });
+    if (!shape) {
+      if (!event.ctrlKey && !event.metaKey) ui.selection = [];
+      return;
+    }
+    // Ctrl/Cmd+click adds a shape to the selection, or takes it out.
+    if (event.ctrlKey || event.metaKey) {
+      const selected = ui.selection.filter((id) => shapes.has(id));
+      ui.selection = selected.includes(shape.id) ? selected.filter((id) => id !== shape.id) : [...selected, shape.id];
+      return;
+    }
+    if (!ui.selection.includes(shape.id)) ui.selection = [shape.id];
+    const starts = selectedShapes.map(({ id, x, y }) => ({ id, x, y }));
+    capture(event, { kind: "move", id: shape.id, from: at, starts, moved: false });
   }
 
   function onPointerMove(event: PointerEvent) {
@@ -75,11 +98,31 @@
     }
     const at = toDrawing(event);
     if (gesture.kind === "arrow") gesture.to = at;
-    else {
+    else if (gesture.kind === "move") {
+      for (const start of gesture.starts) {
+        const shape = shapes.get(start.id);
+        if (!shape) continue;
+        shape.x = start.x + at.x - gesture.from.x;
+        shape.y = start.y + at.y - gesture.from.y;
+      }
+      gesture.moved = true;
+    } else if (gesture.kind === "resize") {
       const shape = shapes.get(gesture.id);
       if (!shape) return;
-      shape.x = at.x - gesture.offset.x;
-      shape.y = at.y - gesture.offset.y;
+      // Shift keeps the proportions; some shapes always keep them.
+      const keepRatio = event.shiftKey || keepsRatio(shape.type);
+      const delta = { x: at.x - gesture.from.x, y: at.y - gesture.from.y };
+      const { x, y, w, h } = resizeBox(gesture.start, gesture.corner, delta, { keepRatio, fromCenter: ui.resizeFromCenter });
+      Object.assign(shape, { x, y, w, h });
+      gesture.moved = true;
+    } else {
+      const shape = shapes.get(gesture.id);
+      if (!shape) return;
+      // The handle is above the center: pointing straight up is no rotation. Shift turns by steps of 15°.
+      let angle = (Math.atan2(at.y - shape.y, at.x - shape.x) * 180) / Math.PI + 90;
+      if (event.shiftKey) angle = Math.round(angle / 15) * 15;
+      if (gesture.text) shape.textRotation = degrees(angle - shape.rotation);
+      else shape.rotation = degrees(angle);
       gesture.moved = true;
     }
   }
@@ -87,26 +130,39 @@
   function onPointerUp(event: PointerEvent) {
     const ended = gesture;
     gesture = null;
-    if (ended?.kind === "move" && ended.moved) void save();
+    if (ended && "moved" in ended && ended.moved) void save();
+    // A click without a drag on a shape of the selection selects it alone.
+    if (ended?.kind === "move" && !ended.moved) ui.selection = [ended.id];
     if (ended?.kind === "arrow") {
       const target = shapeAt(diagram.shapes, toDrawing(event));
       if (target && target.id !== ended.from) {
         const arrow = newArrow(newId("arrow"), { shapeId: ended.from, port: null }, { shapeId: target.id, port: null }, nextZ());
         diagram.arrows.push(arrow);
-        ui.selected = arrow.id;
+        ui.selection = [arrow.id];
         void save();
       }
     }
+  }
+
+  function startResize(event: PointerEvent, shape: Shape, corner: Corner) {
+    if (event.button !== 0) return;
+    const { x, y, w, h, rotation } = shape;
+    capture(event, { kind: "resize", id: shape.id, corner, from: toDrawing(event), start: { x, y, w, h, rotation }, moved: false });
+  }
+
+  function startRotate(event: PointerEvent, shape: Shape, text: boolean) {
+    if (event.button !== 0) return;
+    capture(event, { kind: "rotate", id: shape.id, text, moved: false });
   }
 
   function onDoubleClick(event: MouseEvent) {
     const at = toDrawing(event);
     const shape = shapeAt(diagram.shapes, at);
     if (shape) return startEditing(shape.id);
-    if (ui.tool !== "rect") return;
-    const created = newShape(newId("shape"), at, nextZ());
+    if (ui.tool === "select" || ui.tool === "arrow") return;
+    const created = newShape(newId("shape"), at, nextZ(), ui.tool);
     diagram.shapes.push(created);
-    ui.selected = created.id;
+    ui.selection = [created.id];
     void save();
     startEditing(created.id);
   }
@@ -123,20 +179,28 @@
     } else pan = { x: pan.x - event.deltaX, y: pan.y - event.deltaY };
   }
 
-  const TOOL_KEYS: Record<string, Tool> = { v: "select", r: "rect", f: "arrow" };
+  const TOOL_KEYS: Record<string, Tool> = { s: "select", r: "rect", e: "ellipse", d: "database", c: "circle", a: "actor", p: "postit", t: "text", f: "arrow" };
 
   function onKeyDown(event: KeyboardEvent) {
     if (editing || (event.target as HTMLElement).closest("input, textarea, [role=dialog]")) return;
+    const key = event.key.toLowerCase();
     if (event.key === " ") {
+      // Space on a button presses it, rather than moving the canvas.
+      if ((event.target as HTMLElement).closest("button")) return;
       spaceHeld = true;
       event.preventDefault();
-    } else if ((event.key === "Delete" || event.key === "Backspace") && ui.selected) {
-      if (shapes.has(ui.selected)) removeShape(diagram, ui.selected);
-      else diagram.arrows = diagram.arrows.filter((arrow) => arrow.id !== ui.selected);
-      ui.selected = null;
+    } else if ((event.ctrlKey || event.metaKey) && key === "a") {
+      event.preventDefault();
+      ui.selection = [...diagram.shapes.map((shape) => shape.id), ...diagram.arrows.map((arrow) => arrow.id)];
+    } else if ((event.key === "Delete" || event.key === "Backspace") && ui.selection.length) {
+      diagram.arrows = diagram.arrows.filter((arrow) => !ui.selection.includes(arrow.id));
+      for (const id of ui.selection) if (shapes.has(id)) removeShape(diagram, id);
+      ui.selection = [];
       void save();
-    } else if (event.key === "Escape") ui.selected = null;
-    else if (!event.ctrlKey && !event.metaKey && !event.altKey && TOOL_KEYS[event.key.toLowerCase()]) ui.tool = TOOL_KEYS[event.key.toLowerCase()];
+    } else if (event.key === "Escape") {
+      ui.tool = "select";
+      ui.selection = [];
+    } else if (!event.ctrlKey && !event.metaKey && !event.altKey && TOOL_KEYS[key]) ui.tool = TOOL_KEYS[key];
   }
 
   function onKeyUp(event: KeyboardEvent) {
@@ -146,7 +210,7 @@
   function selectArrow(event: PointerEvent, id: string) {
     if (event.button !== 0 || spaceHeld || ui.tool === "arrow") return;
     event.stopPropagation();
-    ui.selected = id;
+    ui.selection = [id];
   }
 
   // ── Text of a shape: Enter applies, Shift+Enter adds a line, Escape abandons, leaving the field applies ──
@@ -180,25 +244,32 @@
 
   const editedShape = $derived(editing ? shapes.get(editing.id) : undefined);
   const nameOf = (id: string) => {
-    const text = shapes.get(id)?.text.trim();
-    return text ? t("shape_named", { text }) : t("shape");
+    const shape = shapes.get(id);
+    if (!shape) return "";
+    const type = t(`type_${shape.type}`);
+    const text = shape.text.trim();
+    return text ? t("shape_named", { type, text }) : type;
   };
   const endName = (end: Endpoint) => (isAttached(end) ? nameOf(end.shapeId) : `(${Math.round(end.x)}, ${Math.round(end.y)})`);
 </script>
 
-<svelte:window onkeydown={onKeyDown} onkeyup={onKeyUp} />
+<!-- A gesture follows the pointer over the whole View, even past the canvas, where pointer capture may not hold. -->
+<svelte:window
+  onkeydown={onKeyDown}
+  onkeyup={onKeyUp}
+  onpointermove={onPointerMove}
+  onpointerup={onPointerUp}
+  onpointercancel={() => (gesture = null)}
+/>
 
 <div class="dg-canvas">
   <svg
     bind:this={svg}
     role="application"
     aria-label={t("canvas")}
-    class="tool-{ui.tool}"
+    class="tool-{ui.tool === 'select' || ui.tool === 'arrow' ? ui.tool : 'shape'}"
     class:panning={gesture?.kind === "pan"}
     onpointerdown={onPointerDown}
-    onpointermove={onPointerMove}
-    onpointerup={onPointerUp}
-    onpointercancel={() => (gesture = null)}
     onmousedown={(event) => event.button === 1 && event.preventDefault()}
     ondblclick={onDoubleClick}
     onwheel={onWheel}
@@ -206,24 +277,13 @@
     <g transform="translate({pan.x} {pan.y}) scale({zoom})">
       {#each items as item (item.kind === "shape" ? item.shape.id : item.arrow.id)}
         {#if item.kind === "shape"}
-          {@const shape = item.shape}
-          {@const lines = shape.text.split("\n")}
-          <g
-            role="img"
-            aria-label={nameOf(shape.id)}
-            class="dg-shape {shape.color}"
-            class:selected={ui.selected === shape.id}
-            transform="translate({shape.x} {shape.y}) rotate({shape.rotation})"
-          >
-            <rect x={-shape.w / 2} y={-shape.h / 2} width={shape.w} height={shape.h} rx="6" fill-opacity={shape.opacity} />
-            {#if editing?.id !== shape.id}
-              <text font-size={shape.fontSize} text-anchor="middle" dominant-baseline="central">
-                {#each lines as line, index}
-                  <tspan x="0" dy={index === 0 ? (-(lines.length - 1) * LINE_HEIGHT * shape.fontSize) / 2 : LINE_HEIGHT * shape.fontSize}>{line}</tspan>
-                {/each}
-              </text>
-            {/if}
-          </g>
+          <ShapeView
+            shape={item.shape}
+            label={nameOf(item.shape.id)}
+            selected={ui.selection.includes(item.shape.id)}
+            editing={editing?.id === item.shape.id}
+            {measure}
+          />
         {:else}
           {@const arrow = item.arrow}
           {@const ends = arrowEnds(shapes, arrow)}
@@ -233,7 +293,7 @@
               role="img"
               aria-label={t("arrow_between", { from: endName(arrow.from), to: endName(arrow.to) })}
               class="dg-arrow"
-              class:selected={ui.selected === arrow.id}
+              class:selected={ui.selection.includes(arrow.id)}
               style:--arrow-color={arrow.color}
               onpointerdown={(event) => selectArrow(event, arrow.id)}
             >
@@ -262,6 +322,50 @@
           {/if}
         {/if}
       {/if}
+
+      {#if withHandles}
+        {@const shape = withHandles}
+        {@const size = 5 / zoom}
+        {@const stem = 26 / zoom}
+        <g class="dg-handles" transform="translate({shape.x} {shape.y}) rotate({shape.rotation})">
+          <line class="dg-stem" x1="0" y1={-shape.h / 2} x2="0" y2={-shape.h / 2 - stem} stroke-width={1 / zoom} />
+          {#each CORNERS as corner (corner)}
+            <rect
+              role="button"
+              tabindex="-1"
+              aria-label={t(`resize_${corner}`)}
+              class="dg-handle resize-{corner}"
+              x={(cornerSign(corner).x * shape.w) / 2 - size}
+              y={(cornerSign(corner).y * shape.h) / 2 - size}
+              width={size * 2}
+              height={size * 2}
+              stroke-width={1.5 / zoom}
+              onpointerdown={(event) => startResize(event, shape, corner)}
+            />
+          {/each}
+          <circle
+            role="button"
+            tabindex="-1"
+            aria-label={t("rotate_handle")}
+            class="dg-handle rotate"
+            cy={-shape.h / 2 - stem}
+            r={size * 1.2}
+            stroke-width={1.5 / zoom}
+            onpointerdown={(event) => startRotate(event, shape, false)}
+          />
+          <g
+            role="button"
+            tabindex="-1"
+            aria-label={t("rotate_text_handle")}
+            class="dg-handle-text"
+            transform="translate({-stem} {-shape.h / 2 - stem})"
+            onpointerdown={(event) => startRotate(event, shape, true)}
+          >
+            <circle class="dg-handle" r={size * 1.6} stroke-width={1.5 / zoom} />
+            <text font-size={size * 2} text-anchor="middle" dominant-baseline="central">T</text>
+          </g>
+        </g>
+      {/if}
     </g>
   </svg>
 
@@ -274,6 +378,7 @@
       style:width="{editedShape.w * zoom}px"
       style:height="{editedShape.h * zoom}px"
       style:font-size="{editedShape.fontSize * zoom}px"
+      style:text-align={editedShape.textAlign}
       bind:value={editing.text}
       onkeydown={onTextKey}
       onblur={applyText}
@@ -281,6 +386,8 @@
     ></textarea>
   {/if}
 </div>
+
+<ShapePanel shapes={selectedShapes} onEditText={startEditing} />
 
 <style>
   .dg-canvas {
@@ -297,7 +404,7 @@
     user-select: none;
     touch-action: none;
   }
-  svg.tool-rect {
+  svg.tool-shape {
     cursor: crosshair;
   }
   svg.tool-arrow {
@@ -305,19 +412,6 @@
   }
   svg.panning {
     cursor: grabbing;
-  }
-  .dg-shape rect {
-    fill: var(--fill);
-    stroke: var(--stroke);
-    stroke-width: 1.5;
-  }
-  .dg-shape text {
-    fill: var(--text);
-    pointer-events: none;
-  }
-  .dg-shape.selected rect {
-    stroke: var(--accent);
-    stroke-width: 2.5;
   }
   .dg-arrow-hit {
     stroke: transparent;
@@ -341,6 +435,32 @@
     stroke-dasharray: 6 4;
     pointer-events: none;
   }
+  .dg-stem {
+    stroke: var(--accent);
+  }
+  .dg-handle {
+    fill: var(--bg);
+    stroke: var(--accent);
+    outline: none;
+  }
+  .resize-nw,
+  .resize-se {
+    cursor: nwse-resize;
+  }
+  .resize-ne,
+  .resize-sw {
+    cursor: nesw-resize;
+  }
+  .rotate,
+  .dg-handle-text {
+    cursor: grab;
+    outline: none;
+  }
+  .dg-handle-text text {
+    fill: var(--accent);
+    font-weight: 700;
+    pointer-events: none;
+  }
   .dg-text-editor {
     position: absolute;
     padding: 4px;
@@ -349,7 +469,6 @@
     background: var(--panel);
     color: var(--ink);
     font-family: inherit;
-    text-align: center;
     resize: none;
     outline: none;
   }

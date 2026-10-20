@@ -1,0 +1,66 @@
+// Where the lines of a shape's text are drawn: its lines wrap within the width of the shape, as in the original, and
+// are placed by its alignments. SVG does not wrap text, so the width of a line is measured in the font of the View.
+
+import type { Shape } from "./diagram.ts";
+
+/** The space between the text and the box of its shape. */
+const PAD = 8;
+export const LINE_HEIGHT = 1.3;
+
+/** The width of a text in a font size, in units of the drawing. */
+export type Measure = (text: string, fontSize: number) => number;
+
+/** The lines of a text whose lines wrap between words within `width`; a word wider than `width` stays whole. */
+export function wrap(text: string, width: number, fontSize: number, measure: Measure): string[] {
+  return text.split("\n").flatMap((paragraph) => {
+    const lines: string[] = [];
+    let line = "";
+    for (const word of paragraph.split(" ")) {
+      const longer = line ? `${line} ${word}` : word;
+      if (line && measure(longer, fontSize) > width) {
+        lines.push(line);
+        line = word;
+      } else line = longer;
+    }
+    return [...lines, line];
+  });
+}
+
+export interface TextLayout {
+  lines: string[];
+  /** Where the lines start, in the frame of the shape: `x` by `anchor`, `y` the middle of the first line. */
+  x: number;
+  y: number;
+  anchor: "start" | "middle" | "end";
+  lineHeight: number;
+}
+
+/**
+ * The lines of the text of a shape and where they go, in the frame of the shape. The text of an actor goes below its
+ * silhouette, centered and without wrapping, as in the original.
+ */
+export function layoutText(shape: Shape, measure: Measure): TextLayout {
+  const lineHeight = shape.fontSize * LINE_HEIGHT;
+  if (shape.type === "actor") {
+    const lines = shape.text.split("\n");
+    return { lines, x: 0, y: shape.h / 2 + 4 + lineHeight / 2, anchor: "middle", lineHeight };
+  }
+  const lines = wrap(shape.text, shape.w - PAD * 2, shape.fontSize, measure);
+  const block = (lines.length - 1) * lineHeight;
+  const y =
+    shape.textValign === "top" ? -shape.h / 2 + PAD + shape.fontSize / 2 : shape.textValign === "bottom" ? shape.h / 2 - PAD - shape.fontSize / 2 - block : -block / 2;
+  if (shape.textAlign === "left") return { lines, x: -shape.w / 2 + PAD, y, anchor: "start", lineHeight };
+  if (shape.textAlign === "right") return { lines, x: shape.w / 2 - PAD, y, anchor: "end", lineHeight };
+  return { lines, x: 0, y, anchor: "middle", lineHeight };
+}
+
+/** Measures in the font of the View, with a canvas; an estimate where there is none. */
+export function canvasMeasure(): Measure {
+  const context = typeof document === "undefined" ? null : document.createElement("canvas").getContext("2d");
+  const family = typeof document === "undefined" ? "" : getComputedStyle(document.body).fontFamily;
+  return (text, fontSize) => {
+    if (!context) return text.length * fontSize * 0.58;
+    context.font = `${fontSize}px ${family}`;
+    return context.measureText(text).width;
+  };
+}

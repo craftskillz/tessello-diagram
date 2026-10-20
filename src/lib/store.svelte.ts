@@ -3,7 +3,7 @@
 // (CONVENTION.md §4). Diagrams that could not be read cannot be changed, so that an empty screen never overwrites them.
 
 import type { ConnectedModule } from "@tessello/sdk";
-import { type Diagram, type DiagramEntry, newDiagram, newId } from "./diagram.ts";
+import { type BuiltInType, type Diagram, type DiagramEntry, newDiagram, newId } from "./diagram.ts";
 import { t, titleOf } from "./i18n.ts";
 import { type DiagramStorage, diagramStorage, reasonOf } from "./storage.ts";
 
@@ -19,13 +19,16 @@ export const status = $state({
   saveError: "",
 });
 
-export type Tool = "select" | "rect" | "arrow";
+/** Select, draw an arrow, or place a shape of a type. */
+export type Tool = "select" | "arrow" | BuiltInType;
 
 /** What the User is doing on the canvas, shared by the toolbar and the canvas. */
 export const ui = $state({
   tool: "select" as Tool,
-  /** The selected shape or arrow, by id. */
-  selected: null as string | null,
+  /** The selected shapes and arrows, by id. */
+  selection: [] as string[],
+  /** Resizing keeps the center of the shape where it is, rather than its opposite corner. */
+  resizeFromCenter: false,
 });
 
 let storage: DiagramStorage;

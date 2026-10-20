@@ -7,6 +7,12 @@
   const TOOLS: { tool: Tool; label: () => string; icon: string }[] = [
     { tool: "select", label: () => t("tool_select"), icon: "M5 3l14 8-6 2-3 6z" },
     { tool: "rect", label: () => t("tool_rect"), icon: "M4 6h16v12H4z" },
+    { tool: "ellipse", label: () => t("tool_ellipse"), icon: "M3 12a9 6 0 1 0 18 0a9 6 0 1 0-18 0" },
+    { tool: "database", label: () => t("tool_database"), icon: "M5 6a7 3 0 1 0 14 0a7 3 0 1 0-14 0M5 6v12a7 3 0 0 0 14 0V6" },
+    { tool: "circle", label: () => t("tool_circle"), icon: "M4 12a8 8 0 1 0 16 0a8 8 0 1 0-16 0" },
+    { tool: "actor", label: () => t("tool_actor"), icon: "M9 5a3 3 0 1 0 6 0a3 3 0 1 0-6 0M12 8v7M6 11h12M12 15l-4 6M12 15l4 6" },
+    { tool: "postit", label: () => t("tool_postit"), icon: "M4 4h11l5 5v11H4zM15 4v5h5" },
+    { tool: "text", label: () => t("tool_text"), icon: "M5 6h14M12 6v13M9 19h6" },
     { tool: "arrow", label: () => t("tool_arrow"), icon: "M4 20L19 5M11 5h8v8" },
   ];
 
@@ -32,12 +38,19 @@
   />
   <div class="dg-tools" role="group" aria-label={t("tools")}>
     {#each TOOLS as { tool, label, icon } (tool)}
-      <button type="button" class="dg-btn dg-tool" aria-pressed={ui.tool === tool} title={label()} onclick={() => (ui.tool = tool)}>
+      <button type="button" class="dg-btn dg-tool" aria-pressed={ui.tool === tool} aria-label={label()} title={label()} onclick={() => (ui.tool = tool)}>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d={icon} /></svg>
-        <span>{label()}</span>
       </button>
     {/each}
   </div>
+  <button
+    type="button"
+    class="dg-btn"
+    title={ui.resizeFromCenter ? t("resize_center_hint") : t("resize_corner_hint")}
+    onclick={() => (ui.resizeFromCenter = !ui.resizeFromCenter)}
+  >
+    {ui.resizeFromCenter ? t("resize_center") : t("resize_corner")}
+  </button>
   <p class="dg-save" class:failed={status.saveError} role="status">
     {status.saveError ? t("save_failed") : status.saving ? t("saving") : t("saved")}
   </p>
@@ -77,8 +90,7 @@
   }
   .dg-tool {
     display: inline-flex;
-    align-items: center;
-    gap: 6px;
+    padding: 5px 7px;
   }
   .dg-tool svg {
     width: 16px;
@@ -97,10 +109,5 @@
   .dg-save.failed {
     color: var(--red);
     font-weight: 600;
-  }
-  @media (max-width: 720px) {
-    .dg-tool span {
-      display: none;
-    }
   }
 </style>

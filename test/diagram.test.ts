@@ -41,6 +41,7 @@ describe("reading a stored diagram", () => {
           fontSize: 14,
           textAlign: "center",
           textValign: "middle",
+          textRotation: 15,
           color: "c-blue",
           opacity: 1,
           groupId: null,
@@ -77,12 +78,21 @@ describe("reading a stored diagram", () => {
     assert.equal(read.title, "");
     assert.deepEqual(
       { ...read.shapes[0] },
-      { id: "s1", type: "rect", x: 10, y: 20, w: 120, h: 60, rotation: 0, text: "", fontSize: 14, textAlign: "center", textValign: "middle", color: "c-gray", opacity: 1, groupId: null, locked: false, link: null, z: 0 },
+      { id: "s1", type: "rect", x: 10, y: 20, w: 120, h: 60, rotation: 0, text: "", fontSize: 14, textAlign: "center", textValign: "middle", textRotation: 0, color: "c-gray", opacity: 1, groupId: null, locked: false, link: null, z: 0 },
     );
     assert.deepEqual(read.arrows[0].from, { shapeId: "s1", port: null });
     assert.deepEqual(read.arrows[0].to, { shapeId: "s1", port: "N" });
     assert.equal(read.arrows[0].route, "straight");
     assert.equal(read.arrows[0].heads, "end");
+  });
+
+  test("a shape missing its size or its color takes those of its type", () => {
+    const [database, postit] = readDiagram(
+      { shapes: [{ id: "s1", type: "database", x: 0, y: 0 }, { id: "s2", type: "postit", x: 0, y: 0, w: 200 }] },
+      "d1",
+    ).shapes;
+    assert.deepEqual([database.w, database.h, database.color], [60, 80, "c-gray"]);
+    assert.deepEqual([postit.w, postit.h, postit.color], [200, 100, "c-amber"]);
   });
 
   test("skips shapes without an id or a position, and arrows whose ends cannot be read", () => {
@@ -109,6 +119,11 @@ describe("reading a stored diagram", () => {
     assert.equal(shape.textAlign, "center");
     assert.equal(shape.opacity, 1);
     assert.equal(shape.locked, false);
+  });
+
+  test("a text size out of 8–48 is brought back within it", () => {
+    const [big, small] = readDiagram({ shapes: [{ id: "s1", x: 0, y: 0, fontSize: 200 }, { id: "s2", x: 0, y: 0, fontSize: 2 }] }, "d1").shapes;
+    assert.deepEqual([big.fontSize, small.fontSize], [48, 8]);
   });
 
   test("a value that is not a diagram is an empty diagram", () => {

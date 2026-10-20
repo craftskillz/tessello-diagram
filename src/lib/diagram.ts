@@ -8,6 +8,42 @@ import { arrowEnds, type Endpoint, isAttached, type Point } from "./geometry.ts"
 export const SHAPE_TYPES = ["rect", "ellipse", "database", "circle", "actor", "postit", "text", "image", "custom"] as const;
 export type ShapeType = (typeof SHAPE_TYPES)[number];
 
+/** The shapes drawn by the tools of the toolbar, in its order. */
+export const BUILT_IN_TYPES = ["rect", "ellipse", "database", "circle", "actor", "postit", "text"] as const satisfies readonly ShapeType[];
+export type BuiltInType = (typeof BUILT_IN_TYPES)[number];
+
+/** The palette of the living-documentation editor, by key: the colors of each key are in base.css, in a light and a dark variant. */
+export const COLORS = [
+  "c-gray", "c-slate", "c-blue", "c-sky", "c-cyan", "c-teal", "c-green", "c-lime",
+  "c-amber", "c-orange", "c-red", "c-rose", "c-pink", "c-purple", "c-indigo",
+] as const;
+
+/**
+ * The size and color of a new shape, by type. The sizes are a little larger than those of the living-documentation
+ * editor (its rectangle was 100 × 40), so that a new shape holds a word or two; the defaults are set by ticket 11.
+ */
+const CREATION: Record<ShapeType, { w: number; h: number; color: string }> = {
+  rect: { w: 120, h: 60, color: "c-gray" },
+  ellipse: { w: 120, h: 60, color: "c-gray" },
+  database: { w: 60, h: 80, color: "c-gray" },
+  circle: { w: 60, h: 60, color: "c-gray" },
+  // The actor keeps the proportions of its silhouette, 30 × 52.
+  actor: { w: 36, h: 62.4, color: "c-gray" },
+  postit: { w: 120, h: 100, color: "c-amber" },
+  text: { w: 120, h: 30, color: "c-gray" },
+  image: { w: 160, h: 120, color: "c-gray" },
+  custom: { w: 96, h: 96, color: "c-gray" },
+};
+
+/** The font sizes a shape's text can take. */
+export const FONT_SIZES = { min: 8, max: 48 };
+
+/** A font size within `FONT_SIZES`, in whole units. */
+export const clampFontSize = (size: number): number => Math.min(FONT_SIZES.max, Math.max(FONT_SIZES.min, Math.round(size)));
+
+/** Whether a shape always keeps its proportions when resized: the actor's silhouette, and the circle. */
+export const keepsRatio = (type: ShapeType): boolean => type === "actor" || type === "circle";
+
 const TEXT_ALIGNS = ["left", "center", "right"] as const;
 const TEXT_VALIGNS = ["top", "middle", "bottom"] as const;
 const ROUTES = ["straight", "curved", "elbow"] as const;
@@ -27,6 +63,8 @@ export interface Shape {
   fontSize: number;
   textAlign: (typeof TEXT_ALIGNS)[number];
   textValign: (typeof TEXT_VALIGNS)[number];
+  /** The rotation of the text around the center of the shape, in degrees, clockwise, added to that of the shape. */
+  textRotation: number;
   /** A key of the palette, such as "c-blue". */
   color: string;
   /** The opacity of the fill, from 0 to 1. */
@@ -72,21 +110,23 @@ export interface DiagramEntry {
   updatedAt: number;
 }
 
-/** A new rectangle centered on a point, with the creation values. */
-export function newShape(id: string, at: Point, z: number): Shape {
+/** A new shape centered on a point, with the creation values of its type. */
+export function newShape(id: string, at: Point, z: number, type: ShapeType = "rect"): Shape {
+  const { w, h, color } = CREATION[type];
   return {
     id,
-    type: "rect",
+    type,
     x: at.x,
     y: at.y,
-    w: 120,
-    h: 60,
+    w,
+    h,
     rotation: 0,
     text: "",
     fontSize: 14,
     textAlign: "center",
     textValign: "middle",
-    color: "c-gray",
+    textRotation: 0,
+    color,
     opacity: 1,
     groupId: null,
     locked: false,
@@ -114,6 +154,14 @@ export function removeShape(diagram: Diagram, id: string): void {
     if (isAttached(arrow.to) && arrow.to.shapeId === id) arrow.to = ends.end;
   }
   diagram.shapes = diagram.shapes.filter((shape) => shape.id !== id);
+}
+
+/** Brings items to the front of the drawing, or sends them to the back, keeping their order among themselves. */
+export function reorder(diagram: Diagram, ids: readonly string[], where: "front" | "back"): void {
+  const items = [...diagram.shapes, ...diagram.arrows].sort((a, b) => a.z - b.z);
+  const moved = items.filter((item) => ids.includes(item.id));
+  const others = items.filter((item) => !ids.includes(item.id));
+  (where === "front" ? [...others, ...moved] : [...moved, ...others]).forEach((item, z) => (item.z = z));
 }
 
 /** A new identifier, unique enough for the shapes, arrows and diagrams of one User. */
@@ -158,17 +206,17 @@ export function readDiagram(value: unknown, id: string): Diagram {
 
 function readShape(value: unknown): Shape | null {
   if (!isRecord(value) || !isText(value.id) || !isNumber(value.x) || !isNumber(value.y)) return null;
-  const shape = newShape(value.id, { x: value.x, y: value.y }, numberOr(value.z, 0));
+  const shape = newShape(value.id, { x: value.x, y: value.y }, numberOr(value.z, 0), oneOf(SHAPE_TYPES, value.type, "rect"));
   return {
     ...shape,
-    type: oneOf(SHAPE_TYPES, value.type, shape.type),
     w: positiveOr(value.w, shape.w),
     h: positiveOr(value.h, shape.h),
     rotation: numberOr(value.rotation, shape.rotation),
     text: textOr(value.text, shape.text),
-    fontSize: positiveOr(value.fontSize, shape.fontSize),
+    fontSize: isNumber(value.fontSize) ? clampFontSize(value.fontSize) : shape.fontSize,
     textAlign: oneOf(TEXT_ALIGNS, value.textAlign, shape.textAlign),
     textValign: oneOf(TEXT_VALIGNS, value.textValign, shape.textValign),
+    textRotation: numberOr(value.textRotation, shape.textRotation),
     color: textOr(value.color, shape.color),
     opacity: isNumber(value.opacity) && value.opacity >= 0 && value.opacity <= 1 ? value.opacity : shape.opacity,
     groupId: isText(value.groupId) ? value.groupId : null,

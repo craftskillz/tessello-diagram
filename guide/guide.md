@@ -14,9 +14,17 @@ To delete a diagram, point at it in the list and click **×**, then confirm. A d
 
 Pick a tool at the top, or press its key:
 
-- **Select (V)**: click a shape to select it, drag it to move it. **Delete** removes the selected shape or arrow. The arrows attached to a removed shape stay where they were.
-- **Rectangle (R)**: double-click an empty spot to place a rectangle and type its text. **Enter** applies the text, **Shift+Enter** adds a line, **Escape** abandons it. Double-click a shape to change its text.
-- **Arrow (F)**: press on a shape, drag to another one and release. The arrow follows both shapes when you move them, and stops at their outline.
+- **Select (S)**: click a shape to select it, drag it to move it. **Ctrl+click** (**Cmd+click** on a Mac) adds a shape to the selection or takes it out, and **Ctrl+A** selects everything. **Delete** removes the selection. The arrows attached to a removed shape stay where they were. **Escape** returns to this tool.
+- **Rectangle (R)**, **Ellipse (E)**, **Database (D)**, **Circle (C)**, **Actor (A)**, **Post-it (P)** and **Free text (T)**: double-click an empty spot to place the shape and type its text. **Enter** applies the text, **Shift+Enter** adds a line, **Escape** abandons it. The text wraps within the width of the shape. Double-click a shape, or click **Edit text**, to change its text.
+- **Arrow (F)**: press on a shape, drag to another one and release. The arrow follows both shapes when you move, resize or turn them, and stops at their outline.
+
+## Resizing, turning and styling
+
+Drag a corner of the selected shape to resize it. Hold **Shift** to keep its proportions; an actor and a circle always keep them. The button at the top chooses whether the opposite corner or the center stays in place.
+
+Drag the round handle above the shape to turn it (**Shift** turns by steps of 15°), or use the rotation buttons of the panel, by 10°. The handle marked **T** turns the text alone.
+
+The panel on the right styles every selected shape: its color, the opacity of its background, the size and alignment of its text, and whether it is in front of or behind the others.
 
 To move around the canvas, use the wheel, or drag while holding **Space** or the middle button. **Ctrl+wheel** (**Cmd+wheel** on a Mac) zooms.
 
