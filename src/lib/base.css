@@ -93,3 +93,16 @@ body {
   opacity: 0.5;
   cursor: default;
 }
+
+/* The panels docked beside the canvas, for the selected shapes or arrows: they never hide the drawing. */
+.dg-panel {
+  flex: 0 0 232px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-left: 1px solid var(--line);
+  background: var(--panel);
+  font-size: 12px;
+  overflow-y: auto;
+}

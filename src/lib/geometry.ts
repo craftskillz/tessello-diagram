@@ -84,30 +84,78 @@ export function outlinePoint(shape: Outlined, toward: Point): Point {
   return { x: shape.x + onOutline.x, y: shape.y + onOutline.y };
 }
 
+/** The ports of the built-in shapes, from north clockwise. */
+export const PORTS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"] as const;
+
+/** The direction of each port from the center, in the frame of the shape: x right, y down. */
+const PORT_SIDES: Record<string, Point> = {
+  N: { x: 0, y: -1 },
+  NE: { x: 1, y: -1 },
+  E: { x: 1, y: 0 },
+  SE: { x: 1, y: 1 },
+  S: { x: 0, y: 1 },
+  SW: { x: -1, y: 1 },
+  W: { x: -1, y: 0 },
+  NW: { x: -1, y: -1 },
+};
+
+/** The ports a shape offers. Custom shapes get theirs from the shape editor (ticket 09); until then, none. */
+export const portsOf = (shape: { type?: ShapeType }): readonly string[] => (shape.type === "custom" ? [] : PORTS);
+
+/**
+ * Where a port of a shape is, on its real outline: the corners of a rectangle, on the curve of an ellipse or a circle,
+ * where the sides of a database meet its lids. It follows the rotation of the shape. An unknown port is the center.
+ */
+export function portPoint(shape: Outlined, port: string): Point {
+  const side = PORT_SIDES[port];
+  if (!side) return { x: shape.x, y: shape.y };
+  const a = shape.w / 2;
+  const b = shape.type === "database" ? shape.h / 2 - lidOf(shape.h) : shape.h / 2;
+  const local = { x: side.x * a, y: side.y * (side.x === 0 ? shape.h / 2 : b) };
+  const factor = outlineFactor(shape, local);
+  const onOutline = rotate({ x: local.x * factor, y: local.y * factor }, shape.rotation);
+  return { x: shape.x + onOutline.x, y: shape.y + onOutline.y };
+}
+
+/** The direction a port faces, away from the center of its shape, as a unit vector. */
+export function portDirection(shape: Outlined, port: string): Point {
+  const side = PORT_SIDES[port];
+  if (!side) return { x: 0, y: 0 };
+  const turned = rotate(side, shape.rotation);
+  const length = Math.hypot(turned.x, turned.y);
+  return { x: turned.x / length, y: turned.y / length };
+}
+
 /** Whether a point is on or inside the outline of a shape. */
 export function contains(shape: Outlined, point: Point): boolean {
   const local = toLocal(shape, point);
   return (local.x === 0 && local.y === 0) || outlineFactor(shape, local) >= 1;
 }
 
+/**
+ * Where the line from `inside`, a point within a shape, toward `toward` leaves its outline: the end of an arrow drawn
+ * beside the center, such as one of several parallel arrows. Every outline is convex, so the crossing is found by halving.
+ */
+export function exitPoint(shape: Outlined, inside: Point, toward: Point): Point {
+  const dx = toward.x - inside.x;
+  const dy = toward.y - inside.y;
+  const length = Math.hypot(dx, dy);
+  if (length === 0) return { x: inside.x, y: inside.y };
+  // Past the outline for sure: the shape is never wider than w + h, whatever its rotation.
+  let low = 0;
+  let high = (shape.w + shape.h) / length;
+  for (let step = 0; step < 60; step++) {
+    const middle = (low + high) / 2;
+    if (contains(shape, { x: inside.x + dx * middle, y: inside.y + dy * middle })) low = middle;
+    else high = middle;
+  }
+  return { x: inside.x + dx * low, y: inside.y + dy * low };
+}
+
 /** An end of an arrow: attached to a shape, at one of its ports or automatically (`port: null`), or free at a point. */
 export type Endpoint = { shapeId: string; port: string | null } | Point;
 
 export const isAttached = (end: Endpoint): end is { shapeId: string; port: string | null } => "shapeId" in end;
-
-/**
- * Where an arrow starts and ends. An end attached to a shape aims at the other end (the center of its shape, or its
- * point) and stops at the outline. Null when an end is attached to a shape that is not there.
- */
-export function arrowEnds(shapes: ReadonlyMap<string, Outlined>, arrow: { from: Endpoint; to: Endpoint }): { start: Point; end: Point } | null {
-  const from = isAttached(arrow.from) ? shapes.get(arrow.from.shapeId) : arrow.from;
-  const to = isAttached(arrow.to) ? shapes.get(arrow.to.shapeId) : arrow.to;
-  if (!from || !to) return null;
-  return {
-    start: isAttached(arrow.from) ? outlinePoint(from as Outlined, to) : { x: from.x, y: from.y },
-    end: isAttached(arrow.to) ? outlinePoint(to as Outlined, from) : { x: to.x, y: to.y },
-  };
-}
 
 /** The frontmost shape whose outline holds the point, if any. */
 export function shapeAt<S extends Outlined & { z: number }>(shapes: readonly S[], point: Point): S | undefined {
@@ -162,4 +210,16 @@ export function resizeBox(box: Box, corner: Corner, delta: Point, mode: { keepRa
   // The new center, from the opposite corner, in the frame of the shape.
   const center = rotate({ x: (sx * (w - box.w)) / 2, y: (sy * (h - box.h)) / 2 }, box.rotation);
   return { ...box, x: box.x + center.x, y: box.y + center.y, w, h };
+}
+
+/** Whether the whole box of a shape, turned, is within a rectangle given by its top-left corner and its size. */
+export function boxWithin(box: Box, rectangle: { x: number; y: number; w: number; h: number }): boolean {
+  return (["nw", "ne", "se", "sw"] as const).every((corner) => {
+    const sign = cornerSign(corner);
+    const at = rotate({ x: (sign.x * box.w) / 2, y: (sign.y * box.h) / 2 }, box.rotation);
+    const x = box.x + at.x;
+    const y = box.y + at.y;
+    // Within a hair: a corner turned by 90° lands a rounding error off.
+    return x >= rectangle.x - 1e-9 && x <= rectangle.x + rectangle.w + 1e-9 && y >= rectangle.y - 1e-9 && y <= rectangle.y + rectangle.h + 1e-9;
+  });
 }

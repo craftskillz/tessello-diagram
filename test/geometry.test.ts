@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { arrowEnds, arrowHead, degrees, outlinePoint, resizeBox, shapeAt } from "../src/lib/geometry.ts";
+import { arrowHead, boxWithin, degrees, outlinePoint, portPoint, portsOf, resizeBox, shapeAt } from "../src/lib/geometry.ts";
 
 const box = { x: 0, y: 0, w: 100, h: 40, rotation: 0 };
 
@@ -87,34 +87,39 @@ describe("where a segment from the center of a shape leaves its outline, by type
   });
 });
 
-describe("the ends of an arrow", () => {
-  const a = { id: "a", x: -200, y: 0, w: 100, h: 40, rotation: 0 };
-  const b = { id: "b", x: 200, y: 0, w: 100, h: 40, rotation: 0 };
-  const shapes = new Map([a, b].map((shape) => [shape.id, shape]));
-
-  test("attached automatically at both ends, the line stops at both outlines", () => {
-    assert.deepEqual(arrowEnds(shapes, { from: { shapeId: "a", port: null }, to: { shapeId: "b", port: null } }), {
-      start: { x: -150, y: 0 },
-      end: { x: 150, y: 0 },
-    });
+describe("the ports of a shape", () => {
+  test("a built-in shape has eight, from north clockwise", () => {
+    assert.deepEqual(portsOf({ type: "rect" }), ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]);
   });
 
-  test("follows a shape that moved", () => {
-    const moved = new Map(shapes).set("b", { ...b, y: 400 });
-    const { end } = arrowEnds(moved, { from: { shapeId: "a", port: null }, to: { shapeId: "b", port: null } })!;
-    // From B toward the center of A, the direction (−400, −400) reaches the top side of B first.
-    close(end, { x: 180, y: 380 });
+  test("on a rectangle, they are its corners and the middles of its sides", () => {
+    close(portPoint(box, "NE"), { x: 50, y: -20 });
+    close(portPoint(box, "S"), { x: 0, y: 20 });
+    close(portPoint(box, "W"), { x: -50, y: 0 });
+    close(portPoint({ ...box, x: 200, y: 100 }, "SW"), { x: 150, y: 120 });
   });
 
-  test("an automatic end aims at a free end", () => {
-    assert.deepEqual(arrowEnds(shapes, { from: { shapeId: "a", port: null }, to: { x: -200, y: 300 } }), {
-      start: { x: -200, y: 20 },
-      end: { x: -200, y: 300 },
-    });
+  test("on an ellipse or a circle, the corner ports are on the curve", () => {
+    close(portPoint({ ...box, type: "ellipse" }, "NE"), { x: 50 / Math.SQRT2, y: -20 / Math.SQRT2 });
+    close(portPoint({ type: "circle", x: 0, y: 0, w: 60, h: 60, rotation: 0 }, "SW"), { x: -30 / Math.SQRT2, y: 30 / Math.SQRT2 });
   });
 
-  test("an arrow attached to a shape that no longer exists is not drawn", () => {
-    assert.equal(arrowEnds(shapes, { from: { shapeId: "a", port: null }, to: { shapeId: "gone", port: null } }), null);
+  test("on a database, the corner ports are where the sides meet the lids", () => {
+    // 60 × 100: its lids are 12 high, so the sides end 38 above and below its center.
+    const database = { type: "database" as const, x: 0, y: 0, w: 60, h: 100, rotation: 0 };
+    close(portPoint(database, "NE"), { x: 30, y: -38 });
+    close(portPoint(database, "N"), { x: 0, y: -50 });
+    close(portPoint(database, "SW"), { x: -30, y: 38 });
+  });
+
+  test("follow the rotation of the shape", () => {
+    // Turned by 90° clockwise, the top-right corner of the 100 × 40 rectangle is at the bottom-right on screen.
+    close(portPoint({ ...box, rotation: 90 }, "NE"), { x: 20, y: 50 });
+    close(portPoint({ ...box, rotation: 90 }, "N"), { x: 20, y: 0 });
+  });
+
+  test("an unknown port is the center of the shape", () => {
+    close(portPoint(box, "nowhere"), { x: 0, y: 0 });
   });
 });
 
@@ -204,5 +209,20 @@ describe("resizing a shape by a corner", () => {
 describe("an angle", () => {
   test("is in whole degrees, from 0 to 359", () => {
     assert.deepEqual([degrees(370), degrees(-10), degrees(359.6), degrees(90)], [10, 350, 0, 90]);
+  });
+});
+
+describe("a shape within a rectangle", () => {
+  const rectangle = { x: -60, y: -60, w: 120, h: 120 };
+
+  test("is within when its whole box is", () => {
+    assert.equal(boxWithin(box, rectangle), true);
+    assert.equal(boxWithin({ ...box, x: 20 }, rectangle), false);
+  });
+
+  test("follows the rotation of the shape", () => {
+    // Turned by 90°, the 100 × 40 rectangle is 100 high: it no longer fits within 80 in height.
+    assert.equal(boxWithin({ ...box, rotation: 90 }, { x: -60, y: -40, w: 120, h: 80 }), false);
+    assert.equal(boxWithin({ ...box, rotation: 90 }, { x: -20, y: -50, w: 40, h: 100 }), true);
   });
 });

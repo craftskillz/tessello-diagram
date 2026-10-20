@@ -129,17 +129,6 @@
 </aside>
 
 <style>
-  .dg-panel {
-    flex: 0 0 232px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    padding: 12px;
-    border-left: 1px solid var(--line);
-    background: var(--panel);
-    font-size: 12px;
-    overflow-y: auto;
-  }
   .dg-hint {
     margin: 0;
     color: var(--muted);

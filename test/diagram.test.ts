@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { newArrow, newDiagram, newShape, readDiagram, readIndex, removeShape } from "../src/lib/diagram.ts";
+import { detachEnds, newArrow, newDiagram, newShape, readDiagram, readIndex, removeShape } from "../src/lib/diagram.ts";
 
 describe("reading the index of diagrams", () => {
   test("nothing stored yet is an empty index", () => {
@@ -143,5 +143,35 @@ describe("removing a shape", () => {
     // The 120 × 60 rectangle B ended the arrow at the middle of its left side.
     assert.deepEqual(diagram.arrows[0].from, { shapeId: "a", port: null });
     assert.deepEqual(diagram.arrows[0].to, { x: 140, y: 0 });
+  });
+
+  test("frees the ends where they were drawn, even when the arrow was spread beside another", () => {
+    const diagram = newDiagram("d1", "Checkout", 0);
+    diagram.shapes.push(newShape("a", { x: -200, y: 0 }, 0), newShape("b", { x: 200, y: 0 }, 1));
+    diagram.arrows.push(newArrow("1", { shapeId: "a", port: null }, { shapeId: "b", port: null }, 2));
+    diagram.arrows.push(newArrow("2", { shapeId: "a", port: null }, { shapeId: "b", port: null }, 3));
+    removeShape(diagram, "b");
+    // Two parallel arrows are drawn 24 apart, 12 on each side of the line between the centers.
+    const ends = diagram.arrows.map((arrow) => arrow.to as { x: number; y: number });
+    assert.ok(Math.abs(ends[0].x - 140) < 1e-6 && Math.abs(ends[0].y + 12) < 1e-6, JSON.stringify(ends));
+    assert.ok(Math.abs(ends[1].x - 140) < 1e-6 && Math.abs(ends[1].y - 12) < 1e-6, JSON.stringify(ends));
+  });
+
+  test("with its arrows, also removes every arrow attached to it, and keeps the others", () => {
+    const diagram = newDiagram("d1", "Checkout", 0);
+    diagram.shapes.push(newShape("a", { x: -200, y: 0 }, 0), newShape("b", { x: 200, y: 0 }, 1));
+    diagram.arrows.push(newArrow("ab", { shapeId: "a", port: null }, { shapeId: "b", port: "N" }, 2));
+    diagram.arrows.push(newArrow("free", { x: 0, y: 100 }, { shapeId: "a", port: null }, 3));
+    removeShape(diagram, "b", { withArrows: true });
+    assert.deepEqual(diagram.arrows.map((arrow) => arrow.id), ["free"]);
+  });
+});
+
+describe("detaching the ends of an arrow", () => {
+  test("makes the ends attached to a port automatic, and leaves the others as they are", () => {
+    const arrow = newArrow("1", { shapeId: "a", port: "NE" }, { x: 10, y: 20 }, 0);
+    detachEnds(arrow);
+    assert.deepEqual(arrow.from, { shapeId: "a", port: null });
+    assert.deepEqual(arrow.to, { x: 10, y: 20 });
   });
 });

@@ -1,18 +1,25 @@
 <script lang="ts">
   // The canvas of the open diagram, drawn in SVG from its model alone (lib/diagram.ts): what is drawn and what a click
-  // finds both come from the shapes and arrows, through lib/geometry.ts. A gesture changes the model as it goes and
-  // saves it when it ends.
-  import { type Diagram, keepsRatio, newArrow, newId, newShape, removeShape, type Shape } from "../lib/diagram.ts";
-  import { arrowEnds, arrowHead, type Box, type Corner, cornerSign, degrees, type Endpoint, isAttached, type Point, resizeBox, shapeAt } from "../lib/geometry.ts";
+  // finds both come from the shapes and arrows, through lib/geometry.ts and lib/arrows.ts. A gesture changes the model
+  // as it goes and saves it when it ends.
+  import { arrowAt, constrainAngle, endAt, headOf, isDrawable, layoutArrows, pathData, pathWithin, pointAlong, anchorOf } from "../lib/arrows.ts";
+  import { type Arrow, type Diagram, keepsRatio, newArrow, newId, newShape, removeShape, type Shape } from "../lib/diagram.ts";
+  import { type Box, boxWithin, type Corner, cornerSign, degrees, type Endpoint, isAttached, type Point, portPoint, portsOf, resizeBox, shapeAt } from "../lib/geometry.ts";
   import { t } from "../lib/i18n.ts";
   import { save, type Tool, ui } from "../lib/store.svelte.ts";
   import { canvasMeasure } from "../lib/text.ts";
+  import ArrowPanel from "./ArrowPanel.svelte";
   import ShapePanel from "./ShapePanel.svelte";
   import ShapeView from "./ShapeView.svelte";
 
   let { diagram }: { diagram: Diagram } = $props();
 
   const HEAD = 10;
+  /** On screen, in pixels, whatever the zoom: the width of the click zone of an arrow on each side of its line, the reach
+   * of a port, and how far the pointer goes before a press becomes a drag. */
+  const HIT = 5;
+  const PORT_REACH = 8;
+  const DRAG = 3;
   const CORNERS: Corner[] = ["nw", "ne", "se", "sw"];
   const measure = canvasMeasure();
 
@@ -22,13 +29,19 @@
   let zoom = $state(1);
   let spaceHeld = false;
 
+  /** Where a free arrow was when a move started: its ends and its waypoints. */
+  type Line = { id: string; from: Point; to: Point; waypoints: Point[] };
   type Gesture =
     | { kind: "pan"; from: Point; pan: Point }
-    | { kind: "move"; id: string; from: Point; starts: { id: string; x: number; y: number }[]; moved: boolean }
-    | { kind: "arrow"; from: string; to: Point }
+    | { kind: "move"; id: string; from: Point; starts: { id: string; x: number; y: number }[]; lines: Line[]; moved: boolean }
+    | { kind: "draw"; from: Endpoint; press: Point; at: Point; moved: boolean }
+    | { kind: "end"; id: string; which: "from" | "to"; moved: boolean }
+    | { kind: "marquee"; from: Point; to: Point; kept: string[] }
     | { kind: "resize"; id: string; corner: Corner; from: Point; start: Box; moved: boolean }
     | { kind: "rotate"; id: string; text: boolean; moved: boolean };
   let gesture = $state<Gesture | null>(null);
+  /** Where the pointer is on the drawing, to show the ports it can reach. */
+  let pointer = $state<Point | null>(null);
 
   /** The shape whose text is being edited, and the text typed so far. */
   let editing = $state<{ id: string; text: string } | null>(null);
@@ -42,6 +55,33 @@
   );
   const nextZ = () => Math.max(-1, ...diagram.shapes.map((shape) => shape.z), ...diagram.arrows.map((arrow) => arrow.z)) + 1;
   const selectedShapes = $derived(diagram.shapes.filter((shape) => ui.selection.includes(shape.id)));
+  const selectedArrows = $derived(diagram.arrows.filter((arrow) => ui.selection.includes(arrow.id)));
+  /** The path of each arrow: the line, its click zone, its handles and its label all follow it. */
+  const paths = $derived(layoutArrows(shapes, diagram.arrows));
+  /**
+   * The arrow that shows the handles of its ends: a single selected arrow, with the Select tool. With the Arrow tool, a
+   * press on its end starts a new arrow, which then shares its port.
+   */
+  const withEnds = $derived(ui.tool === "select" && selectedArrows.length === 1 && ui.selection.length === 1 ? selectedArrows[0] : undefined);
+  /** The reach of the pointer in units of the drawing, from a reach on screen. */
+  const reach = (pixels: number) => pixels / zoom;
+  /**
+   * What an end would attach to at the pointer, while an arrow is drawn or an end dragged, or while the Arrow tool hovers:
+   * its shape shows its ports, and the port aimed at is highlighted.
+   */
+  const aim = $derived(
+    pointer && (gesture?.kind === "draw" || gesture?.kind === "end" || (!gesture && ui.tool === "arrow"))
+      ? endAt(diagram.shapes, gesture?.kind === "draw" ? gesture.at : pointer, reach(PORT_REACH))
+      : undefined,
+  );
+  /** Whether the Select tool hovers an arrow, which the cursor then shows. */
+  const overArrow = $derived(ui.tool === "select" && !gesture && !!pointer && !!arrowAt(diagram.arrows, paths, pointer, reach(HIT)));
+  const isFree = (arrow: Arrow) => !isAttached(arrow.from) && !isAttached(arrow.to);
+  /** The end an arrow being drawn gets at a point: what is there, or free if it would join the start to itself. */
+  function endingAt(from: Endpoint, at: Point): Endpoint {
+    const { end } = endAt(diagram.shapes, at, reach(PORT_REACH));
+    return isDrawable(from, end) ? end : { x: at.x, y: at.y };
+  }
   /** The shape that shows the handles to resize and turn it: a single selected shape. */
   const withHandles = $derived(selectedShapes.length === 1 && !editing ? selectedShapes[0] : undefined);
 
@@ -73,37 +113,69 @@
     }
     if (event.button !== 0) return;
     const at = toDrawing(event);
-    const shape = shapeAt(diagram.shapes, at);
-    if (ui.tool === "arrow" && shape) return capture(event, { kind: "arrow", from: shape.id, to: at });
-    if (!shape) {
-      if (!event.ctrlKey && !event.metaKey) ui.selection = [];
+    const ctrl = event.ctrlKey || event.metaKey;
+    // The Arrow tool draws from anywhere, but not from a locked shape.
+    if (ui.tool === "arrow") {
+      const start = endAt(diagram.shapes, at, reach(PORT_REACH));
+      if (start.shape?.locked) return;
+      return capture(event, { kind: "draw", from: start.end, press: { x: event.clientX, y: event.clientY }, at, moved: false });
+    }
+    // Near its line, an arrow wins over a shape under it.
+    const item = arrowAt(diagram.arrows, paths, at, reach(HIT)) ?? shapeAt(diagram.shapes, at);
+    if (!item) {
+      if (!ctrl) ui.selection = [];
+      // With the Select tool, a drag on the empty canvas draws a selection rectangle.
+      if (ui.tool === "select") capture(event, { kind: "marquee", from: at, to: at, kept: [...ui.selection] });
       return;
     }
-    // Ctrl/Cmd+click adds a shape to the selection, or takes it out.
-    if (event.ctrlKey || event.metaKey) {
-      const selected = ui.selection.filter((id) => shapes.has(id));
-      ui.selection = selected.includes(shape.id) ? selected.filter((id) => id !== shape.id) : [...selected, shape.id];
+    // Ctrl/Cmd+click adds a shape or an arrow to the selection, or takes it out.
+    if (ctrl) {
+      ui.selection = ui.selection.includes(item.id) ? ui.selection.filter((id) => id !== item.id) : [...ui.selection, item.id];
       return;
     }
-    if (!ui.selection.includes(shape.id)) ui.selection = [shape.id];
+    if (!ui.selection.includes(item.id)) ui.selection = [item.id];
+    // The selected shapes move, and the selected arrows whose two ends are free: an attached arrow does not move by its body.
     const starts = selectedShapes.map(({ id, x, y }) => ({ id, x, y }));
-    capture(event, { kind: "move", id: shape.id, from: at, starts, moved: false });
+    const lines = selectedArrows.filter(isFree).map(({ id, from, to, waypoints }) => ({ id, from: { ...(from as Point) }, to: { ...(to as Point) }, waypoints: waypoints.map((point) => ({ ...point })) }));
+    capture(event, { kind: "move", id: item.id, from: at, starts, lines, moved: false });
   }
 
   function onPointerMove(event: PointerEvent) {
+    // Off the canvas, no port is shown, unless a gesture goes on.
+    if (svg) pointer = gesture || svg.contains(event.target as Node) ? toDrawing(event) : null;
     if (!gesture) return;
     if (gesture.kind === "pan") {
       pan = { x: gesture.pan.x + event.clientX - gesture.from.x, y: gesture.pan.y + event.clientY - gesture.from.y };
       return;
     }
     const at = toDrawing(event);
-    if (gesture.kind === "arrow") gesture.to = at;
+    if (gesture.kind === "draw") {
+      // Shift turns the arrow by steps of 45° around its start.
+      gesture.at = event.shiftKey ? constrainAngle(anchorOf(shapes, gesture.from), at) : at;
+      if (Math.hypot(event.clientX - gesture.press.x, event.clientY - gesture.press.y) > DRAG) gesture.moved = true;
+    } else if (gesture.kind === "end") {
+      const arrow = diagram.arrows.find((arrow) => arrow.id === (gesture as { id: string }).id);
+      if (!arrow) return;
+      // Shift turns the arrow by steps of 45° around its other end.
+      const other = gesture.which === "from" ? arrow.to : arrow.from;
+      arrow[gesture.which] = endingAt(other, event.shiftKey ? constrainAngle(anchorOf(shapes, other), at) : at);
+      gesture.moved = true;
+    } else if (gesture.kind === "marquee") gesture.to = at;
     else if (gesture.kind === "move") {
+      const dx = at.x - gesture.from.x;
+      const dy = at.y - gesture.from.y;
       for (const start of gesture.starts) {
         const shape = shapes.get(start.id);
         if (!shape) continue;
-        shape.x = start.x + at.x - gesture.from.x;
-        shape.y = start.y + at.y - gesture.from.y;
+        shape.x = start.x + dx;
+        shape.y = start.y + dy;
+      }
+      for (const line of gesture.lines) {
+        const arrow = diagram.arrows.find((arrow) => arrow.id === line.id);
+        if (!arrow) continue;
+        arrow.from = { x: line.from.x + dx, y: line.from.y + dy };
+        arrow.to = { x: line.to.x + dx, y: line.to.y + dy };
+        arrow.waypoints = line.waypoints.map((point) => ({ x: point.x + dx, y: point.y + dy }));
       }
       gesture.moved = true;
     } else if (gesture.kind === "resize") {
@@ -130,18 +202,32 @@
   function onPointerUp(event: PointerEvent) {
     const ended = gesture;
     gesture = null;
-    if (ended && "moved" in ended && ended.moved) void save();
-    // A click without a drag on a shape of the selection selects it alone.
-    if (ended?.kind === "move" && !ended.moved) ui.selection = [ended.id];
-    if (ended?.kind === "arrow") {
-      const target = shapeAt(diagram.shapes, toDrawing(event));
-      if (target && target.id !== ended.from) {
-        const arrow = newArrow(newId("arrow"), { shapeId: ended.from, port: null }, { shapeId: target.id, port: null }, nextZ());
-        diagram.arrows.push(arrow);
-        ui.selection = [arrow.id];
-        void save();
-      }
+    if (!ended) return;
+    if (ended.kind !== "draw" && "moved" in ended && ended.moved) void save();
+    // A click without a drag on an item of the selection selects it alone.
+    if (ended.kind === "move" && !ended.moved && !event.ctrlKey && !event.metaKey) ui.selection = [ended.id];
+    // A click without a drag draws nothing.
+    if (ended.kind === "draw" && ended.moved) {
+      const arrow = newArrow(newId("arrow"), ended.from, endingAt(ended.from, ended.at), nextZ());
+      diagram.arrows.push(arrow);
+      ui.selection = [arrow.id];
+      void save();
     }
+    // The rectangle selects the shapes and the arrows it holds entirely.
+    if (ended.kind === "marquee") {
+      const rectangle = { x: Math.min(ended.from.x, ended.to.x), y: Math.min(ended.from.y, ended.to.y), w: Math.abs(ended.to.x - ended.from.x), h: Math.abs(ended.to.y - ended.from.y) };
+      if (rectangle.w === 0 && rectangle.h === 0) return;
+      const inside = [
+        ...diagram.shapes.filter((shape) => boxWithin(shape, rectangle)).map((shape) => shape.id),
+        ...diagram.arrows.filter((arrow) => paths.has(arrow.id) && pathWithin(paths.get(arrow.id)!, rectangle)).map((arrow) => arrow.id),
+      ];
+      ui.selection = [...new Set([...ended.kept, ...inside])];
+    }
+  }
+
+  function startEnd(event: PointerEvent, arrow: Arrow, which: "from" | "to") {
+    if (event.button !== 0) return;
+    capture(event, { kind: "end", id: arrow.id, which, moved: false });
   }
 
   function startResize(event: PointerEvent, shape: Shape, corner: Corner) {
@@ -157,6 +243,8 @@
 
   function onDoubleClick(event: MouseEvent) {
     const at = toDrawing(event);
+    // The label of an arrow is edited by ticket 05: a double-click on an arrow does nothing yet.
+    if (arrowAt(diagram.arrows, paths, at, reach(HIT))) return;
     const shape = shapeAt(diagram.shapes, at);
     if (shape) return startEditing(shape.id);
     if (ui.tool === "select" || ui.tool === "arrow") return;
@@ -193,8 +281,10 @@
       event.preventDefault();
       ui.selection = [...diagram.shapes.map((shape) => shape.id), ...diagram.arrows.map((arrow) => arrow.id)];
     } else if ((event.key === "Delete" || event.key === "Backspace") && ui.selection.length) {
+      // Deleting a shape frees the ends of its arrows; Ctrl/Cmd+Delete deletes its arrows too.
+      const withArrows = event.ctrlKey || event.metaKey;
       diagram.arrows = diagram.arrows.filter((arrow) => !ui.selection.includes(arrow.id));
-      for (const id of ui.selection) if (shapes.has(id)) removeShape(diagram, id);
+      for (const id of ui.selection) if (shapes.has(id)) removeShape(diagram, id, { withArrows });
       ui.selection = [];
       void save();
     } else if (event.key === "Escape") {
@@ -205,12 +295,6 @@
 
   function onKeyUp(event: KeyboardEvent) {
     if (event.key === " ") spaceHeld = false;
-  }
-
-  function selectArrow(event: PointerEvent, id: string) {
-    if (event.button !== 0 || spaceHeld || ui.tool === "arrow") return;
-    event.stopPropagation();
-    ui.selection = [id];
   }
 
   // ── Text of a shape: Enter applies, Shift+Enter adds a line, Escape abandons, leaving the field applies ──
@@ -250,7 +334,14 @@
     const text = shape.text.trim();
     return text ? t("shape_named", { type, text }) : type;
   };
-  const endName = (end: Endpoint) => (isAttached(end) ? nameOf(end.shapeId) : `(${Math.round(end.x)}, ${Math.round(end.y)})`);
+  const endName = (end: Endpoint) => {
+    if (!isAttached(end)) return `(${Math.round(end.x)}, ${Math.round(end.y)})`;
+    return end.port ? t("end_at_port", { shape: nameOf(end.shapeId), port: end.port }) : nameOf(end.shapeId);
+  };
+  const arrowName = (arrow: Arrow) => {
+    const ends = { from: endName(arrow.from), to: endName(arrow.to) };
+    return arrow.label ? t("arrow_named", { ...ends, label: arrow.label }) : t("arrow_between", ends);
+  };
 </script>
 
 <!-- A gesture follows the pointer over the whole View, even past the canvas, where pointer capture may not hold. -->
@@ -269,6 +360,7 @@
     aria-label={t("canvas")}
     class="tool-{ui.tool === 'select' || ui.tool === 'arrow' ? ui.tool : 'shape'}"
     class:panning={gesture?.kind === "pan"}
+    class:over-arrow={overArrow}
     onpointerdown={onPointerDown}
     onmousedown={(event) => event.button === 1 && event.preventDefault()}
     ondblclick={onDoubleClick}
@@ -286,41 +378,69 @@
           />
         {:else}
           {@const arrow = item.arrow}
-          {@const ends = arrowEnds(shapes, arrow)}
-          {#if ends}
-            {@const head = arrowHead(ends.start, ends.end, HEAD + arrow.width * 2)}
-            <g
-              role="img"
-              aria-label={t("arrow_between", { from: endName(arrow.from), to: endName(arrow.to) })}
-              class="dg-arrow"
-              class:selected={ui.selection.includes(arrow.id)}
-              style:--arrow-color={arrow.color}
-              onpointerdown={(event) => selectArrow(event, arrow.id)}
-            >
-              <line class="dg-arrow-hit" x1={ends.start.x} y1={ends.start.y} x2={ends.end.x} y2={ends.end.y} />
-              <line
+          {@const path = paths.get(arrow.id)}
+          {#if path}
+            {@const head = headOf(path, HEAD + arrow.width * 2)}
+            {@const middle = pointAlong(path, 0.5)}
+            <!-- Arrows take no pointer events: a click finds them by the distance to their path (lib/arrows.ts). -->
+            <g role="img" aria-label={arrowName(arrow)} class="dg-arrow" class:selected={ui.selection.includes(arrow.id)} style:--arrow-color={arrow.color}>
+              <path
                 class="dg-arrow-line"
-                x1={ends.start.x}
-                y1={ends.start.y}
-                x2={head.base.x}
-                y2={head.base.y}
+                d={pathData(head.line)}
                 stroke-width={arrow.width}
                 stroke-dasharray={arrow.dashed ? `${arrow.width * 4} ${arrow.width * 3}` : undefined}
               />
               <polygon class="dg-arrow-head" points={head.points.map((point) => `${point.x},${point.y}`).join(" ")} />
+              {#if arrow.label}
+                <text class="dg-arrow-label" x={middle.x} y={middle.y} text-anchor="middle" dominant-baseline="central">{arrow.label}</text>
+              {/if}
             </g>
           {/if}
         {/if}
       {/each}
 
-      {#if gesture?.kind === "arrow"}
-        {@const from = shapes.get(gesture.from)}
-        {#if from}
-          {@const ends = arrowEnds(shapes, { from: { shapeId: from.id, port: null }, to: gesture.to })}
-          {#if ends}
-            <line class="dg-arrow-preview" x1={ends.start.x} y1={ends.start.y} x2={ends.end.x} y2={ends.end.y} />
-          {/if}
+      {#if gesture?.kind === "draw" && gesture.moved}
+        {@const preview = layoutArrows(shapes, [{ id: "", from: gesture.from, to: endingAt(gesture.from, gesture.at), route: "straight" }]).get("")}
+        {#if preview}
+          <path class="dg-arrow-preview" d={pathData(preview)} stroke-width={2 / zoom} />
         {/if}
+      {/if}
+
+      {#if aim?.shape && !aim.shape.locked}
+        {@const shape = aim.shape}
+        {#each portsOf(shape) as port (port)}
+          {@const at = portPoint(shape, port)}
+          <circle class="dg-port" class:aimed={aim.port === port} data-port={port} cx={at.x} cy={at.y} r={(aim.port === port ? 5 : 3.5) / zoom} stroke-width={1.5 / zoom} />
+        {/each}
+      {/if}
+
+      {#if withEnds && paths.get(withEnds.id)}
+        {@const arrow = withEnds}
+        {@const path = paths.get(arrow.id)!}
+        {#each [["from", path.start], ["to", path.end]] as const as [which, at] (which)}
+          <circle
+            role="button"
+            tabindex="-1"
+            aria-label={t(which === "from" ? "arrow_start_handle" : "arrow_end_handle")}
+            class="dg-handle dg-end"
+            cx={at.x}
+            cy={at.y}
+            r={5 / zoom}
+            stroke-width={1.5 / zoom}
+            onpointerdown={(event) => startEnd(event, arrow, which)}
+          />
+        {/each}
+      {/if}
+
+      {#if gesture?.kind === "marquee"}
+        <rect
+          class="dg-marquee"
+          x={Math.min(gesture.from.x, gesture.to.x)}
+          y={Math.min(gesture.from.y, gesture.to.y)}
+          width={Math.abs(gesture.to.x - gesture.from.x)}
+          height={Math.abs(gesture.to.y - gesture.from.y)}
+          stroke-width={1 / zoom}
+        />
       {/if}
 
       {#if withHandles}
@@ -387,7 +507,11 @@
   {/if}
 </div>
 
-<ShapePanel shapes={selectedShapes} onEditText={startEditing} />
+{#if selectedArrows.length && !selectedShapes.length}
+  <ArrowPanel arrows={selectedArrows} />
+{:else}
+  <ShapePanel shapes={selectedShapes} onEditText={startEditing} />
+{/if}
 
 <style>
   .dg-canvas {
@@ -413,25 +537,50 @@
   svg.panning {
     cursor: grabbing;
   }
-  .dg-arrow-hit {
-    stroke: transparent;
-    stroke-width: 14;
-    stroke-linecap: round;
+  svg.over-arrow {
+    cursor: pointer;
+  }
+  .dg-arrow {
+    pointer-events: none;
   }
   .dg-arrow-line {
+    fill: none;
     stroke: var(--arrow-color);
-    pointer-events: none;
   }
   .dg-arrow-head {
     fill: var(--arrow-color);
+  }
+  /* The label is drawn over a halo of the background, which hides the line under it. */
+  .dg-arrow-label {
+    fill: var(--ink);
+    font-size: 12px;
+    paint-order: stroke;
+    stroke: var(--bg);
+    stroke-width: 4px;
+    stroke-linejoin: round;
+  }
+  .dg-port {
+    fill: var(--bg);
+    stroke: var(--accent);
+    pointer-events: none;
+  }
+  .dg-port.aimed {
+    fill: var(--accent);
+  }
+  .dg-end {
+    cursor: move;
+  }
+  .dg-marquee {
+    fill: var(--accent-soft);
+    stroke: var(--accent);
     pointer-events: none;
   }
   .dg-arrow.selected {
     --arrow-color: var(--accent) !important;
   }
   .dg-arrow-preview {
+    fill: none;
     stroke: var(--accent);
-    stroke-width: 2;
     stroke-dasharray: 6 4;
     pointer-events: none;
   }

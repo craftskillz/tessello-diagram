@@ -3,7 +3,8 @@
 // a hand-edited file may have written it: what cannot be read is skipped, and a missing value takes its creation value.
 // The model is the whole one of the spec, so that what later versions store is read back without loss.
 
-import { arrowEnds, type Endpoint, isAttached, type Point } from "./geometry.ts";
+import { layoutArrows } from "./arrows.ts";
+import { type Endpoint, isAttached, type Point } from "./geometry.ts";
 
 export const SHAPE_TYPES = ["rect", "ellipse", "database", "circle", "actor", "postit", "text", "image", "custom"] as const;
 export type ShapeType = (typeof SHAPE_TYPES)[number];
@@ -144,16 +145,27 @@ export function newDiagram(id: string, title: string, updatedAt: number): Diagra
   return { id, title, updatedAt, shapes: [], arrows: [], grid: true, guides: true };
 }
 
-/** Removes a shape. The ends of arrows attached to it become free, where they were drawn: no arrow disappears. */
-export function removeShape(diagram: Diagram, id: string): void {
-  const shapes = new Map(diagram.shapes.map((shape) => [shape.id, shape]));
+/**
+ * Removes a shape. The ends of arrows attached to it become free, where they were drawn: no arrow disappears, unless
+ * `withArrows` asks to remove them too.
+ */
+export function removeShape(diagram: Diagram, id: string, { withArrows = false } = {}): void {
+  const attached = (end: Endpoint) => isAttached(end) && end.shapeId === id;
+  if (withArrows) diagram.arrows = diagram.arrows.filter((arrow) => !attached(arrow.from) && !attached(arrow.to));
+  const paths = layoutArrows(new Map(diagram.shapes.map((shape) => [shape.id, shape])), diagram.arrows);
   for (const arrow of diagram.arrows) {
-    const ends = arrowEnds(shapes, arrow);
-    if (!ends) continue;
-    if (isAttached(arrow.from) && arrow.from.shapeId === id) arrow.from = ends.start;
-    if (isAttached(arrow.to) && arrow.to.shapeId === id) arrow.to = ends.end;
+    const path = paths.get(arrow.id);
+    if (!path) continue;
+    if (attached(arrow.from)) arrow.from = { ...path.start };
+    if (attached(arrow.to)) arrow.to = { ...path.end };
   }
   diagram.shapes = diagram.shapes.filter((shape) => shape.id !== id);
+}
+
+/** Makes the ends of an arrow attached to a port automatic: they then aim at the other end, wherever it is. */
+export function detachEnds(arrow: Arrow): void {
+  if (isAttached(arrow.from)) arrow.from = { shapeId: arrow.from.shapeId, port: null };
+  if (isAttached(arrow.to)) arrow.to = { shapeId: arrow.to.shapeId, port: null };
 }
 
 /** Brings items to the front of the drawing, or sends them to the back, keeping their order among themselves. */

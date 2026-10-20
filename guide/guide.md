@@ -14,9 +14,25 @@ To delete a diagram, point at it in the list and click **×**, then confirm. A d
 
 Pick a tool at the top, or press its key:
 
-- **Select (S)**: click a shape to select it, drag it to move it. **Ctrl+click** (**Cmd+click** on a Mac) adds a shape to the selection or takes it out, and **Ctrl+A** selects everything. **Delete** removes the selection. The arrows attached to a removed shape stay where they were. **Escape** returns to this tool.
+- **Select (S)**: click a shape or an arrow to select it, drag a shape to move it. **Ctrl+click** (**Cmd+click** on a Mac) adds a shape or an arrow to the selection or takes it out, **Ctrl+A** selects everything, and a drag on an empty spot selects what it surrounds entirely. **Delete** removes the selection: the arrows attached to a removed shape stay where they were, their ends left free. **Ctrl+Delete** (**Cmd+Delete**) also removes the arrows of the shape. **Escape** returns to this tool.
 - **Rectangle (R)**, **Ellipse (E)**, **Database (D)**, **Circle (C)**, **Actor (A)**, **Post-it (P)** and **Free text (T)**: double-click an empty spot to place the shape and type its text. **Enter** applies the text, **Shift+Enter** adds a line, **Escape** abandons it. The text wraps within the width of the shape. Double-click a shape, or click **Edit text**, to change its text.
-- **Arrow (F)**: press on a shape, drag to another one and release. The arrow follows both shapes when you move, resize or turn them, and stops at their outline.
+- **Arrow (F)**: press anywhere, drag and release. See below.
+
+## Arrows
+
+With the **Arrow** tool, press, drag and release: one gesture draws the arrow, wherever it starts. **Shift** keeps it at a multiple of 45°. A click without a drag draws nothing.
+
+While you draw, the shape under the pointer shows its eight points: its corners and the middles of its sides, on its outline. Each end of the arrow lands where you release it:
+
+- **on a point**, which lights up as you reach it: the end stays on that point, even when the shape turns;
+- **elsewhere on a shape**: the end is automatic, and meets the outline on the way to the other end;
+- **on an empty spot**: the end is free, and stays where it is.
+
+The arrow follows its shapes when you move, resize or turn them. Several arrows between the same two shapes are drawn side by side, and arrows that share a point spread out from it, so that each stays visible. Click anywhere on an arrow's line to select it.
+
+A selected arrow shows a handle at each end: drag one onto another point or shape, or onto an empty spot to free it. An arrow whose two ends are free moves when you drag its line. **Detach ends**, in the panel, makes the ends attached to a point automatic.
+
+You cannot attach an arrow to a locked shape: an end released on it stays free.
 
 ## Resizing, turning and styling
 
