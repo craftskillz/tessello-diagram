@@ -234,6 +234,24 @@ const en = {
   link_not_found: "Diagram not found",
   link_not_found_msg: "Diagram not found: the diagram this shape leads to was deleted.",
   link_back: "← Back to “{title}”",
+
+  defaults_open: "Defaults",
+  defaults_open_hint: "The style of the shapes and arrows you create from now on",
+  defaults_title: "Diagram defaults",
+  defaults_hint: "They apply to the shapes and arrows you create from now on; those already drawn keep their style.",
+  defaults_arrows: "Arrows",
+  defaults_shapes: "Shapes",
+  defaults_type: "Type",
+  defaults_width: "W",
+  defaults_height: "H",
+  defaults_reset: "Reset",
+  defaults_reset_hint: "Bring back the factory values; nothing is saved until you click Save",
+  defaults_bounds: "Between {min} and {max}",
+  defaults_out_of_bounds: "Correct the values out of their bounds before saving.",
+  defaults_save_shape: "Save as default for this shape type",
+  defaults_save_arrow: "Save as default for arrows",
+  defaults_saved_shape: "Saved: new {type} shapes take this style.",
+  defaults_saved_arrow: "Saved: new arrows take this style.",
 };
 
 type Messages = typeof en;
@@ -472,6 +490,24 @@ const fr: Messages = {
   link_not_found: "Diagramme introuvable",
   link_not_found_msg: "Diagramme introuvable : le diagramme vers lequel mène cette forme a été supprimé.",
   link_back: "← Retour à « {title} »",
+
+  defaults_open: "Défauts",
+  defaults_open_hint: "Le style des formes et des flèches que vous créerez désormais",
+  defaults_title: "Valeurs par défaut du diagramme",
+  defaults_hint: "Elles s'appliquent aux formes et aux flèches que vous créerez désormais ; celles déjà dessinées gardent leur style.",
+  defaults_arrows: "Flèches",
+  defaults_shapes: "Formes",
+  defaults_type: "Type",
+  defaults_width: "L",
+  defaults_height: "H",
+  defaults_reset: "Réinitialiser",
+  defaults_reset_hint: "Revenir aux valeurs d'usine ; rien n'est enregistré avant d'avoir cliqué sur Enregistrer",
+  defaults_bounds: "Entre {min} et {max}",
+  defaults_out_of_bounds: "Corrigez les valeurs hors bornes avant d'enregistrer.",
+  defaults_save_shape: "Définir comme valeur par défaut pour ce type de forme",
+  defaults_save_arrow: "Définir comme valeur par défaut pour les flèches",
+  defaults_saved_shape: "Enregistré : les nouvelles formes {type} prennent ce style.",
+  defaults_saved_arrow: "Enregistré : les nouvelles flèches prennent ce style.",
 };
 
 export type MessageKey = keyof Messages;

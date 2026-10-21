@@ -140,9 +140,9 @@ describe("reading a stored diagram", () => {
     assert.deepEqual(read("tel:+33100000000"), { type: "url", value: "tel:+33100000000" });
   });
 
-  test("a text size out of 8–48 is brought back within it", () => {
+  test("a text size out of 6–72 is brought back within it", () => {
     const [big, small] = readDiagram({ shapes: [{ id: "s1", x: 0, y: 0, fontSize: 200 }, { id: "s2", x: 0, y: 0, fontSize: 2 }] }, "d1").shapes;
-    assert.deepEqual([big.fontSize, small.fontSize], [48, 8]);
+    assert.deepEqual([big.fontSize, small.fontSize], [72, 6]);
   });
 
   test("an arrow takes its creation style and a label in the middle of its line, at its automatic width, where they are missing", () => {
@@ -153,7 +153,7 @@ describe("reading a stored diagram", () => {
     );
   });
 
-  test("brings the style of an arrow back within its bounds: width 1–8 by steps of 0.5, label size 8–48, label along its line", () => {
+  test("brings the style of an arrow back within its bounds: width 1–8 by steps of 0.5, label size 6–72, label along its line", () => {
     const ends = { from: { x: 0, y: 0 }, to: { x: 100, y: 0 } };
     const [thick, thin, odd] = readDiagram(
       {
@@ -166,7 +166,7 @@ describe("reading a stored diagram", () => {
       "d1",
     ).arrows;
     assert.deepEqual([thick.width, thin.width, odd.width], [8, 1, 2.5]);
-    assert.deepEqual([thick.labelSize, thin.labelSize], [48, 8]);
+    assert.deepEqual([thick.labelSize, thin.labelSize], [72, 6]);
     assert.deepEqual([thick.labelAt, thin.labelAt], [1, 0]);
     assert.deepEqual([thick.labelWidth, odd.labelWidth, odd.labelRotation], [null, null, 0]);
   });

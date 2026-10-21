@@ -1,9 +1,11 @@
 // The diagrams in the Host storage (CONVENTION.md §6.1): the list under `diagrams`, and each diagram under
 // `diagram:<id>`, so that a change writes only the diagram it touches. What is stored is read defensively
 // (diagram.ts), and a failed write comes back as a message for the User. Images are kept under `image:<sha256>`
-// (images.ts), and the libraries of custom shapes under `shapes` (library.ts). The usage of the storage is measured when all of it is read, then follows each write and deletion.
+// (images.ts), the libraries of custom shapes under `shapes` (library.ts), and the creation defaults under `defaults`
+// (defaults.ts). The usage of the storage is measured when all of it is read, then follows each write and deletion.
 
 import type { Json, Storage } from "@tessello/sdk";
+import { type Defaults, readDefaults } from "./defaults.ts";
 import { type Diagram, type DiagramEntry, readDiagram, readIndex } from "./diagram.ts";
 import { t } from "./i18n.ts";
 import { readLibraries, type ShapeLibrary } from "./library.ts";
@@ -14,6 +16,7 @@ type Value = Exclude<Json, null>;
 
 const INDEX = "diagrams";
 const LIBRARIES = "shapes";
+const DEFAULTS = "defaults";
 const DIAGRAM = "diagram:";
 const keyOf = (id: string) => `${DIAGRAM}${id}`;
 
@@ -32,6 +35,10 @@ export interface DiagramStorage {
   readLibraries(): Promise<ShapeLibrary[]>;
   /** Writes the libraries. Throws as `write` does. */
   writeLibraries(libraries: ShapeLibrary[]): Promise<void>;
+  /** The creation defaults. Throws when the Host cannot read them. */
+  readDefaults(): Promise<Defaults>;
+  /** Writes the creation defaults. Throws as `write` does. */
+  writeDefaults(defaults: Defaults): Promise<void>;
   /** Every key and its value, which measures the usage again. Throws when the Host cannot read them. */
   readAll(): Promise<Map<string, Json>>;
   /** An image as a data URL, or null when it is missing. */
@@ -88,6 +95,8 @@ export function diagramStorage(storage: Storage): DiagramStorage {
       }),
     readLibraries: async () => readLibraries(await storage.get(LIBRARIES)),
     writeLibraries: (libraries) => withSaveMessage(() => set(LIBRARIES, libraries)),
+    readDefaults: async () => readDefaults(await storage.get(DEFAULTS)),
+    writeDefaults: (defaults) => withSaveMessage(() => set(DEFAULTS, defaults)),
     readDiagrams: async () =>
       [...(await readAll())].filter(([key]) => key.startsWith(DIAGRAM)).map(([key, value]) => readDiagram(value, key.slice(DIAGRAM.length))),
     readAll,

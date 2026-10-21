@@ -3,6 +3,7 @@
   // change is saved when its gesture ends.
   import { t } from "../lib/i18n.ts";
   import { diagrams, rename, save, type Tool, ui } from "../lib/store.svelte.ts";
+  import DefaultsDialog from "./DefaultsDialog.svelte";
   import SaveStatus from "./SaveStatus.svelte";
 
   const TOOLS: { tool: Tool; label: () => string; icon: string }[] = [
@@ -17,6 +18,9 @@
     { tool: "arrow", label: () => t("tool_arrow"), icon: "M4 20L19 5M11 5h8v8" },
     { tool: "image", label: () => t("tool_image"), icon: "M4 5h16v14H4zM4 16l5-5 4 4 2-2 5 5M15 9.5a1.5 1.5 0 1 0 0.01 0" },
   ];
+
+  /** Whether "Diagram defaults" is open. */
+  let editingDefaults = $state(false);
 
   function onTitleKey(event: KeyboardEvent) {
     if (event.key === "Enter") (event.currentTarget as HTMLInputElement).blur();
@@ -59,6 +63,10 @@
       <button type="button" class="dg-btn" aria-pressed={diagram.grid} title={t("grid_hint")} onclick={() => ((diagram.grid = !diagram.grid), void save())}>{t("grid")}</button>
       <button type="button" class="dg-btn" aria-pressed={diagram.guides} title={t("guides_hint")} onclick={() => ((diagram.guides = !diagram.guides), void save())}>{t("guides")}</button>
     </div>
+  {/if}
+  <button type="button" class="dg-btn" title={t("defaults_open_hint")} onclick={() => (editingDefaults = true)}>{t("defaults_open")}</button>
+  {#if editingDefaults}
+    <DefaultsDialog onClose={() => (editingDefaults = false)} />
   {/if}
   <button type="button" class="dg-btn" title={t("shapes_open_hint")} onclick={() => (ui.screen = "shapes")}>{t("shapes_open")}</button>
   <SaveStatus />

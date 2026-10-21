@@ -5,13 +5,14 @@
   // reached that way.
   import { anchorOf, arrowAt, constrainAngle, endAt, endOf, headsOf, isDrawable, isShiftable, labelPlacement, labelPoint, layoutArrows, middlesOf, type Path, pathData, pathWithin, shiftSegment, snapWaypoint, startOf } from "../lib/arrows.ts";
   import { applyStyle, copyItems, copyStyle, pasteItems } from "../lib/clipboard.ts";
-  import { type Arrow, COLORS, type Diagram, keepsRatio, type ShapeLink, newArrow, newId, newShape, nextZ, removeShape, type Shape, withGroups } from "../lib/diagram.ts";
+  import { createArrow, createShape } from "../lib/defaults.ts";
+  import { type Arrow, COLORS, type Diagram, keepsRatio, type ShapeLink, newId, nextZ, removeShape, type Shape, withGroups } from "../lib/diagram.ts";
   import { type Box, boxWithin, type Corner, cornersOf, cornerSign, degrees, type Endpoint, isAttached, type Point, portPoint, portsOf, resizeBox, shapeAt } from "../lib/geometry.ts";
   import { t, titleOf } from "../lib/i18n.ts";
   import { alignment, type Bounds, boundsOf, fitView, GRID, type Guide, pointsBounds, scaleBoxes, snapToGrid } from "../lib/placement.ts";
   import { captionOf } from "../lib/images.ts";
   import { definitionOf, outlineOf, paletteOf, placeCustomShape } from "../lib/library.ts";
-  import { diagrams, followLink, goBack, images, insertImage, redo, requestImages, save, shapeLibraries, type Tool, ui, undo } from "../lib/store.svelte.ts";
+  import { creation, diagrams, followLink, goBack, images, insertImage, redo, requestImages, save, shapeLibraries, type Tool, ui, undo } from "../lib/store.svelte.ts";
   import { canvasMeasure, layoutLabel, LINE_HEIGHT } from "../lib/text.ts";
   import ArrowPanel from "./ArrowPanel.svelte";
   import ShapePanel from "./ShapePanel.svelte";
@@ -400,7 +401,7 @@
       ui.selection = event.altKey ? [ended.id] : withGroups(diagram, [ended.id]);
     // A click without a drag draws nothing.
     if (ended.kind === "draw" && ended.moved) {
-      const arrow = newArrow(newId("arrow"), ended.from, endingAt(ended.from, ended.at), nextZ(diagram));
+      const arrow = createArrow(creation.defaults, newId("arrow"), ended.from, endingAt(ended.from, ended.at), nextZ(diagram));
       diagram.arrows.push(arrow);
       ui.selection = [arrow.id];
       void save();
@@ -506,7 +507,7 @@
       ui.selection = [placeCustomShape(diagram, chosen.library, chosen.shape, at).id];
       return void save();
     }
-    const created = newShape(newId("shape"), at, nextZ(diagram), ui.tool);
+    const created = createShape(creation.defaults, newId("shape"), at, nextZ(diagram), ui.tool);
     diagram.shapes.push(created);
     ui.selection = [created.id];
     void save();

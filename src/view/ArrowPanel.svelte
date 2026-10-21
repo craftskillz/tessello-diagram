@@ -2,12 +2,13 @@
   // The selected arrows: their heads, solid or dashed line, width and color; their route, straight, curved or elbow,
   // "Reset route", which removes their waypoints, and "Detach ends", which makes their ends attached to a port automatic;
   // and their label, its size, its rotation, and "Reset label", which brings it back to the middle of the line at its
-  // automatic width; their lock, and the copy of a style. A control applies to every selected arrow. The panel is docked
-  // beside the canvas, as the panel of the shapes.
+  // automatic width; their lock, and the copy of a style; "Save as default for arrows", for one arrow. A control applies
+  // to every selected arrow. The panel is docked beside the canvas, as the panel of the shapes.
+  import { arrowAsDefault } from "../lib/defaults.ts";
   import { ARROW_WIDTHS, type Arrow, clampArrowWidth, clampFontSize, COLORS, detachEnds, FONT_SIZES, HEADS, ROUTES } from "../lib/diagram.ts";
   import { degrees, isAttached } from "../lib/geometry.ts";
   import { t } from "../lib/i18n.ts";
-  import { save, ui } from "../lib/store.svelte.ts";
+  import { creation, save, saveDefaults, ui } from "../lib/store.svelte.ts";
   import SelectionActions from "./SelectionActions.svelte";
 
   let {
@@ -23,6 +24,14 @@
   const withLabel = $derived(arrows.some((arrow) => arrow.label));
   /** The value the selected arrows share, if they share one. */
   const shared = <K extends keyof Arrow>(key: K): Arrow[K] | undefined => (arrows.every((arrow) => arrow[key] === arrows[0]?.[key]) ? arrows[0]?.[key] : undefined);
+
+  /** The arrow whose style was just saved as the default of the arrows, until another is selected. */
+  let savedDefault = $state<string | null>(null);
+
+  function saveAsDefault() {
+    savedDefault = arrows[0].id;
+    void saveDefaults(arrowAsDefault(creation.defaults, arrows[0]));
+  }
 
   function apply(change: (arrow: Arrow) => void) {
     arrows.forEach(change);
@@ -118,6 +127,12 @@
     title={t("reset_label_hint")}
     onclick={() => apply((arrow) => Object.assign(arrow, { labelAt: 0.5, labelOffset: 0, labelWidth: null }))}>{t("reset_label")}</button
   >
+  {#if arrows.length === 1}
+    <button type="button" class="dg-btn" onclick={saveAsDefault}>{t("defaults_save_arrow")}</button>
+    {#if savedDefault === arrows[0].id}
+      <p class="dg-saved" role="status">{t("defaults_saved_arrow")}</p>
+    {/if}
+  {/if}
   <SelectionActions {onLock} {onCopyStyle} {onPasteStyle} canPaste={ui.style?.kind === "arrow"} />
 </aside>
 
@@ -125,5 +140,9 @@
   /* A swatch of a line shows the color of its outline. */
   .dg-line-swatch {
     background: var(--stroke);
+  }
+  .dg-saved {
+    margin: 0;
+    color: var(--muted);
   }
 </style>

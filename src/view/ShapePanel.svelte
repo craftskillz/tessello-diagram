@@ -1,11 +1,13 @@
 <script lang="ts">
   // The style of the selected shapes: color, opacity of the fill, text size and alignments, rotation of the shape and
   // of its text, and order; their group, their lock, and the copy of a style; the link of a single shape. A control
-  // applies to every selected shape, and a change is saved when it is made. The panel is docked beside the canvas, so that it never hides the drawing.
+  // applies to every selected shape, and a change is saved when it is made. "Save as default for this shape type"
+  // makes the style of one built-in shape the default of its type. The panel is docked beside the canvas, so that it never hides the drawing.
+  import { isBuiltIn, shapeAsDefault } from "../lib/defaults.ts";
   import { clampFontSize, COLORS, FONT_SIZES, groupShapes, LABEL_PLACEMENTS, type LabelPlacement, reorder, type Shape, ungroupShapes } from "../lib/diagram.ts";
   import { degrees } from "../lib/geometry.ts";
   import { t } from "../lib/i18n.ts";
-  import { diagrams, save, ui } from "../lib/store.svelte.ts";
+  import { creation, diagrams, save, saveDefaults, ui } from "../lib/store.svelte.ts";
   import LinkDialog from "./LinkDialog.svelte";
   import SelectionActions from "./SelectionActions.svelte";
 
@@ -22,6 +24,15 @@
 
   /** The first selected shape: the panel shows its values where the selection does not share one. */
   const first = $derived(shapes[0]);
+
+  /** The shape whose style was just saved as the default of its type, until another is selected. */
+  let savedDefault = $state<string | null>(null);
+
+  function saveAsDefault() {
+    savedDefault = first.id;
+    void saveDefaults(shapeAsDefault(creation.defaults, first));
+  }
+
   /** The value the selected shapes share, if they share one. */
   const shared = <K extends keyof Shape>(key: K): Shape[K] | undefined => (shapes.every((shape) => shape[key] === first[key]) ? first[key] : undefined);
 
@@ -157,6 +168,12 @@
 
     {#if shapes.length === 1}
       <button type="button" class="dg-btn" onclick={() => onEditText(first.id)}>{t("edit_text")}</button>
+      {#if isBuiltIn(first)}
+        <button type="button" class="dg-btn" onclick={saveAsDefault}>{t("defaults_save_shape")}</button>
+        {#if savedDefault === first.id}
+          <p class="dg-hint" role="status">{t("defaults_saved_shape", { type: t(`type_${first.type}`) })}</p>
+        {/if}
+      {/if}
       <button type="button" class="dg-btn" title={t("link_open_hint")} onclick={() => (linking = true)}>{t("link_open")}</button>
       {#if linking}
         <LinkDialog shape={first} onClose={() => (linking = false)} />

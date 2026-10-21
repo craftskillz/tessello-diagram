@@ -8,6 +8,7 @@
     title = "",
     confirmLabel = t("save"),
     danger = false,
+    wide = false,
     onConfirm,
     onClose,
     children,
@@ -16,6 +17,8 @@
     title?: string;
     confirmLabel?: string;
     danger?: boolean;
+    /** A dialog with a table, wider than a form. */
+    wide?: boolean;
     onConfirm: () => void;
     onClose: () => void;
     children: Snippet;
@@ -41,7 +44,7 @@
 
 {#if open}
   <div class="dg-modal-backdrop" role="presentation" onclick={onBackdrop}>
-    <div class="dg-modal" role="dialog" aria-modal="true" aria-labelledby={titleId} bind:this={dialog}>
+    <div class="dg-modal" class:dg-modal--wide={wide} role="dialog" aria-modal="true" aria-labelledby={titleId} bind:this={dialog}>
       <h3 class="dg-modal-title" id={titleId}>{title}</h3>
       <div class="dg-modal-body">
         {@render children()}
@@ -75,6 +78,9 @@
     border-radius: 14px;
     box-shadow: var(--shadow);
     padding: 22px 24px;
+  }
+  .dg-modal--wide {
+    max-width: 640px;
   }
   .dg-modal-title {
     margin: 0 0 16px;

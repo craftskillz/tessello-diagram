@@ -55,7 +55,7 @@ The panel of the selected arrows styles them all at once: their arrowheads (none
 
 Double-click an arrow or its label, or click **Edit arrow label**, to write its label. **Enter** applies it, **Shift+Enter** adds a line, **Escape** abandons it. The label sits on a background that hides the line under it.
 
-Drag the label to slide it along the arrow, or away from it on either side: it keeps its place on the arrow when the arrow moves. On a selected arrow, the small handle on the right edge of the label sets the width its lines wrap within. The panel sets the size of its text, from 8 to 48, and turns it by steps of 15°. **Reset label** brings it back to the middle of the arrow, at its automatic width.
+Drag the label to slide it along the arrow, or away from it on either side: it keeps its place on the arrow when the arrow moves. On a selected arrow, the small handle on the right edge of the label sets the width its lines wrap within. The panel sets the size of its text, from 6 to 72, and turns it by steps of 15°. **Reset label** brings it back to the middle of the arrow, at its automatic width.
 
 ## Resizing, turning and styling
 
@@ -66,6 +66,12 @@ Drag the round handle above the shape to turn it (**Shift** turns by steps of 15
 The panel on the right styles every selected shape: its color, the opacity of its background, the size and alignment of its text, and whether it is in front of or behind the others.
 
 Select a shape and click **Copy style** (**Ctrl+Alt+C**, **Cmd+Option+C** on a Mac) to copy its color, the opacity of its background, and the size and alignment of its text; tick **with size** to copy its width and height too. Then select other shapes and click **Paste style** (**Ctrl+Alt+V**, **Cmd+Option+V**). An arrow's style is copied the same way, onto other arrows: its arrowheads, its line, its width, its color, the size of its label and its route.
+
+### Default styles
+
+**Defaults** in the toolbar opens **Diagram defaults**: the arrowheads, line, route, width, color and label size of new arrows, and the width, height, text size and color of new shapes of each built-in type. Sizes go from 10 to 800, and text from 6 to 72: a value out of bounds is outlined in red, and nothing is saved until it is corrected. **Reset** brings back the factory values, saved when you click **Save**. A circle and an actor keep their proportions: their height follows their width.
+
+To start from a shape you styled, select it and click **Save as default for this shape type**; on an arrow, **Save as default for arrows**. Defaults change only the shapes and arrows you create afterwards, never those already drawn. Custom shapes keep the size of their definition.
 
 ## Groups, locks and copies
 

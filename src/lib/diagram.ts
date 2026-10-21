@@ -37,7 +37,7 @@ const CREATION: Record<ShapeType, { w: number; h: number; color: string }> = {
 };
 
 /** The font sizes a shape's text can take. */
-export const FONT_SIZES = { min: 8, max: 48 };
+export const FONT_SIZES = { min: 6, max: 72 };
 
 /** A font size within `FONT_SIZES`, in whole units. */
 export const clampFontSize = (size: number): number => Math.min(FONT_SIZES.max, Math.max(FONT_SIZES.min, Math.round(size)));

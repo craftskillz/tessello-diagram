@@ -9,9 +9,12 @@
 // shape editor, with the same indicator; they are not part of the undo history of a diagram.
 // Following a link to another diagram keeps the diagrams it came from, which "← Back" opens again; opening a diagram
 // from the list starts over.
+// The creation defaults (lib/defaults.ts) are read with the diagrams and saved when they change, with the same
+// indicator; they are not part of the undo history either.
 
 import type { ConnectedModule } from "@tessello/sdk";
 import type { Clip, Style } from "./clipboard.ts";
+import { type Defaults, factoryDefaults } from "./defaults.ts";
 import { type BuiltInType, type Diagram, type DiagramEntry, newDiagram, newId } from "./diagram.ts";
 import { encodeImage } from "./encoding.ts";
 import type { Point } from "./geometry.ts";
@@ -42,6 +45,9 @@ export const status = $state({
 
 /** The libraries of custom shapes. */
 export const shapeLibraries = $state<{ list: ShapeLibrary[] }>({ list: [] });
+
+/** The creation defaults of new shapes and arrows. */
+export const creation = $state<{ defaults: Defaults }>({ defaults: factoryDefaults() });
 
 /** The images read so far, as data URLs, by key: null for an image that is missing from the storage. */
 export const images = $state<Record<string, string | null>>({});
@@ -94,10 +100,12 @@ export async function load(): Promise<void> {
   try {
     const stored = await storage.readIndex();
     const libraries = await storage.readLibraries();
-    // Libraries whose last change could not be saved stay as they are on screen, as a diagram does.
+    const defaults = await storage.readDefaults();
+    // Libraries and defaults whose last change could not be saved stay as they are on screen, as a diagram does.
     if (!status.saveError) {
       shapeLibraries.list = libraries;
       savedLibraries = JSON.stringify(libraries);
+      creation.defaults = defaults;
     }
     const unsaved = status.saveError ? diagrams.open : null;
     diagrams.list = unsaved ? [...stored.filter((entry) => entry.id !== unsaved.id), entryOf(unsaved)] : stored;
@@ -378,6 +386,13 @@ export function saveLibraries(): Promise<void> {
   savedLibraries = next;
   const written = enqueue(() => storage.writeLibraries(libraries));
   return drops ? written.then(cleanImages) : written;
+}
+
+/** Changes the creation defaults, and writes them. */
+export function saveDefaults(defaults: Defaults): Promise<void> {
+  if (!status.loaded) return writes;
+  creation.defaults = defaults;
+  return enqueue(() => storage.writeDefaults(defaults));
 }
 
 /** How many diagrams have a shape drawn from a definition: those stored, with the open one as it is on screen. */
