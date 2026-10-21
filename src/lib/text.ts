@@ -35,15 +35,24 @@ export interface TextLayout {
   lineHeight: number;
 }
 
+/** The space between a picture and the text placed beside it. */
+const GAP = 4;
+
 /**
  * The lines of the text of a shape and where they go, in the frame of the shape. The text of an actor goes below its
- * silhouette, centered and without wrapping, as in the original.
+ * silhouette, centered and without wrapping, as in the original; that of a custom shape goes where its placement says,
+ * outside its picture without wrapping, or over it as in a rectangle.
  */
 export function layoutText(shape: Shape, measure: Measure): TextLayout {
   const lineHeight = shape.fontSize * LINE_HEIGHT;
-  if (shape.type === "actor") {
+  const outside = shape.type === "actor" ? "below" : shape.type === "custom" && shape.labelPlacement !== "center" ? (shape.labelPlacement ?? "below") : null;
+  if (outside) {
     const lines = shape.text.split("\n");
-    return { lines, x: 0, y: shape.h / 2 + 4 + lineHeight / 2, anchor: "middle", lineHeight };
+    const block = (lines.length - 1) * lineHeight;
+    if (outside === "below") return { lines, x: 0, y: shape.h / 2 + GAP + lineHeight / 2, anchor: "middle", lineHeight };
+    if (outside === "above") return { lines, x: 0, y: -shape.h / 2 - GAP - lineHeight / 2 - block, anchor: "middle", lineHeight };
+    if (outside === "right") return { lines, x: shape.w / 2 + GAP * 2, y: -block / 2, anchor: "start", lineHeight };
+    return { lines, x: -shape.w / 2 - GAP * 2, y: -block / 2, anchor: "end", lineHeight };
   }
   const lines = wrap(shape.text, shape.w - PAD * 2, shape.fontSize, measure);
   const block = (lines.length - 1) * lineHeight;

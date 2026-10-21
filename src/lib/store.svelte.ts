@@ -5,6 +5,8 @@
 // Images are stored apart from the diagrams (lib/images.ts), read when a diagram shows them, and removed once nothing
 // refers to them any more, the undo history included: when the View starts, when another diagram is opened, and after
 // a change that takes an image away.
+// The libraries of custom shapes (lib/library.ts) are read with the diagrams, and saved as each change is made in the
+// shape editor, with the same indicator; they are not part of the undo history of a diagram.
 
 import type { ConnectedModule } from "@tessello/sdk";
 import type { Clip, Style } from "./clipboard.ts";
@@ -13,7 +15,8 @@ import { encodeImage } from "./encoding.ts";
 import type { Point } from "./geometry.ts";
 import { type History, isPresent, record, redo as redoInHistory, snapshotsOf, startHistory, undo as undoInHistory } from "./history.ts";
 import { t, titleOf } from "./i18n.ts";
-import { dropsImage, IMAGE_LIMIT, PLACED_BYTES, placeImage, unusedImages } from "./images.ts";
+import { dropsImage, IMAGE_LIMIT, PLACED_BYTES, placeImage, type Size, unusedImages } from "./images.ts";
+import { diagramsUsing, type ShapeLibrary } from "./library.ts";
 import { type DiagramStorage, diagramStorage, reasonOf } from "./storage.ts";
 import { entryBytes } from "./usage.ts";
 
@@ -33,15 +36,22 @@ export const status = $state({
   usage: null as number | null,
 });
 
+/** The libraries of custom shapes. */
+export const shapeLibraries = $state<{ list: ShapeLibrary[] }>({ list: [] });
+
 /** The images read so far, as data URLs, by key: null for an image that is missing from the storage. */
 export const images = $state<Record<string, string | null>>({});
 
-/** Select, draw an arrow, place a shape of a type, or insert an image. */
-export type Tool = "select" | "arrow" | BuiltInType | "image";
+/** Select, draw an arrow, place a shape of a type, insert an image, or place the custom shape chosen in the palette. */
+export type Tool = "select" | "arrow" | BuiltInType | "image" | "custom";
 
 /** What the User is doing on the canvas, shared by the toolbar and the canvas. */
 export const ui = $state({
+  /** The canvas of the open diagram, or the shape editor: the View moves between them without the history of the browser. */
+  screen: "diagram" as "diagram" | "shapes",
   tool: "select" as Tool,
+  /** The definition the Custom tool places, chosen in the palette of the canvas. */
+  customShape: null as { libraryId: string; shapeId: string } | null,
   /** The selected shapes and arrows, by id. */
   selection: [] as string[],
   /** Resizing keeps the center of the shape where it is, rather than its opposite corner. */
@@ -63,6 +73,8 @@ let writes = Promise.resolve();
 let history: History | null = null;
 /** The images being read from the storage. */
 const reading = new Set<string>();
+/** The libraries as last saved, to tell whether a change takes an image away. */
+let savedLibraries = "[]";
 
 export function connectStore(host: ConnectedModule): void {
   storage = diagramStorage(host.storage);
@@ -75,6 +87,12 @@ export function connectStore(host: ConnectedModule): void {
 export async function load(): Promise<void> {
   try {
     const stored = await storage.readIndex();
+    const libraries = await storage.readLibraries();
+    // Libraries whose last change could not be saved stay as they are on screen, as a diagram does.
+    if (!status.saveError) {
+      shapeLibraries.list = libraries;
+      savedLibraries = JSON.stringify(libraries);
+    }
     const unsaved = status.saveError ? diagrams.open : null;
     diagrams.list = unsaved ? [...stored.filter((entry) => entry.id !== unsaved.id), entryOf(unsaved)] : stored;
     const id = [requested, diagrams.open?.id].find((id) => id && diagrams.list.some((entry) => entry.id === id)) ?? mostRecent()?.id;
@@ -203,25 +221,33 @@ export function requestImages(keys: Iterable<string>): void {
 }
 
 /**
- * Inserts a picture chosen or pasted, centered on a point, with its caption: reduced and stored once, under the hash
- * of its content. A picture that cannot be read, is too large, or would fill the storage is refused with a message,
- * and nothing is placed.
+ * Stores a picture chosen or pasted: reduced and stored once, under the hash of its content. A picture that cannot be
+ * read, is too large, or would fill the storage is refused: the message of the error thrown tells the User why.
+ */
+export async function storeImage(file: Blob): Promise<{ key: string; size: Size }> {
+  let image;
+  try {
+    image = await encodeImage(file);
+  } catch {
+    throw new Error(t("image_unreadable"));
+  }
+  const bytes = entryBytes(image.key, image.dataUrl);
+  if (bytes > IMAGE_LIMIT) throw new Error(t("image_too_large", { size: Math.ceil(bytes / 1024), limit: IMAGE_LIMIT / 1024 }));
+  await queue(() => storage.writeImage(image!.key, image!.dataUrl, PLACED_BYTES));
+  images[image.key] = image.dataUrl;
+  return { key: image.key, size: image.size };
+}
+
+/**
+ * Inserts a picture chosen or pasted, centered on a point, with its caption (`storeImage`). A picture refused is not
+ * placed, and a message tells why.
  */
 export async function insertImage(file: Blob, caption: string, at: Point): Promise<void> {
   const diagram = diagrams.open;
   if (!status.loaded || !diagram) return;
   status.imageError = "";
   try {
-    let image;
-    try {
-      image = await encodeImage(file);
-    } catch {
-      throw new Error(t("image_unreadable"));
-    }
-    const bytes = entryBytes(image.key, image.dataUrl);
-    if (bytes > IMAGE_LIMIT) throw new Error(t("image_too_large", { size: Math.ceil(bytes / 1024), limit: IMAGE_LIMIT / 1024 }));
-    await queue(() => storage.writeImage(image.key, image.dataUrl, PLACED_BYTES));
-    images[image.key] = image.dataUrl;
+    const image = await storeImage(file);
     if (diagrams.open !== diagram) return;
     ui.selection = placeImage(diagram, { key: image.key, size: image.size, caption, at });
     await save();
@@ -238,7 +264,7 @@ export async function insertImage(file: Blob, caption: string, at: Point): Promi
 function cleanImages(): Promise<void> {
   return queue(async () => {
     const stored = await storage.readAll();
-    const kept = [...(history ? snapshotsOf(history) : []), JSON.stringify($state.snapshot(diagrams.open))];
+    const kept = [...(history ? snapshotsOf(history) : []), JSON.stringify($state.snapshot(diagrams.open)), JSON.stringify($state.snapshot(shapeLibraries.list))];
     const unused = unusedImages(stored, kept);
     if (unused.length) await storage.removeImages(unused);
     for (const key of unused) delete images[key];
@@ -270,4 +296,22 @@ export async function remove(id: string): Promise<void> {
   }
   await removed;
   return cleanImages();
+}
+
+/** Writes the libraries of custom shapes, as they are on screen. A change that takes an image away may leave it unused. */
+export function saveLibraries(): Promise<void> {
+  if (!status.loaded) return writes;
+  const libraries = $state.snapshot(shapeLibraries.list);
+  const next = JSON.stringify(libraries);
+  const drops = dropsImage(savedLibraries, next);
+  savedLibraries = next;
+  const written = enqueue(() => storage.writeLibraries(libraries));
+  return drops ? written.then(cleanImages) : written;
+}
+
+/** How many diagrams have a shape drawn from a definition: those stored, with the open one as it is on screen. */
+export async function diagramsUsingShape(libraryId: string, shapeId: string): Promise<number> {
+  const stored = await queue(() => storage.readDiagrams());
+  const open = diagrams.open && ($state.snapshot(diagrams.open) as Diagram);
+  return diagramsUsing(open ? [...stored.filter((diagram) => diagram.id !== open.id), open] : stored, libraryId, shapeId);
 }

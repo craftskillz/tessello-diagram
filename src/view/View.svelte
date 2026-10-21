@@ -1,8 +1,9 @@
 <script lang="ts">
   import { t } from "../lib/i18n.ts";
-  import { diagrams, load, status } from "../lib/store.svelte.ts";
+  import { diagrams, load, status, ui } from "../lib/store.svelte.ts";
   import Canvas from "./Canvas.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
+  import ShapeEditor from "./ShapeEditor.svelte";
   import Sidebar from "./Sidebar.svelte";
   import Toolbar from "./Toolbar.svelte";
 </script>
@@ -15,6 +16,8 @@
     </div>
   {:else if !status.loaded}
     <p class="dg-message">{t("loading")}</p>
+  {:else if ui.screen === "shapes"}
+    <ShapeEditor />
   {:else}
     <Sidebar />
     <main class="dg-main">

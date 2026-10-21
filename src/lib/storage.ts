@@ -1,28 +1,37 @@
 // The diagrams in the Host storage (CONVENTION.md §6.1): the list under `diagrams`, and each diagram under
 // `diagram:<id>`, so that a change writes only the diagram it touches. What is stored is read defensively
 // (diagram.ts), and a failed write comes back as a message for the User. Images are kept under `image:<sha256>`
-// (images.ts). The usage of the storage is measured when all of it is read, then follows each write and deletion.
+// (images.ts), and the libraries of custom shapes under `shapes` (library.ts). The usage of the storage is measured when all of it is read, then follows each write and deletion.
 
 import type { Json, Storage } from "@tessello/sdk";
 import { type Diagram, type DiagramEntry, readDiagram, readIndex } from "./diagram.ts";
 import { t } from "./i18n.ts";
+import { readLibraries, type ShapeLibrary } from "./library.ts";
 import { storageUsage } from "./usage.ts";
 
 /** What `storage.set` takes: any JSON value but null. */
 type Value = Exclude<Json, null>;
 
 const INDEX = "diagrams";
-const keyOf = (id: string) => `diagram:${id}`;
+const LIBRARIES = "shapes";
+const DIAGRAM = "diagram:";
+const keyOf = (id: string) => `${DIAGRAM}${id}`;
 
 export interface DiagramStorage {
   /** The list of diagrams. Throws when the Host cannot read it. */
   readIndex(): Promise<DiagramEntry[]>;
   /** A diagram; one never written is empty. Throws when the Host cannot read it. */
   readDiagram(id: string): Promise<Diagram>;
+  /** Every diagram stored, which measures the usage again. Throws when the Host cannot read them. */
+  readDiagrams(): Promise<Diagram[]>;
   /** Writes a diagram, then the list. Throws an `Error` whose message tells the User what happened. */
   write(diagram: Diagram, index: DiagramEntry[]): Promise<void>;
   /** Writes the list, then removes a diagram. Throws as `write` does. */
   remove(id: string, index: DiagramEntry[]): Promise<void>;
+  /** The libraries of custom shapes. Throws when the Host cannot read them. */
+  readLibraries(): Promise<ShapeLibrary[]>;
+  /** Writes the libraries. Throws as `write` does. */
+  writeLibraries(libraries: ShapeLibrary[]): Promise<void>;
   /** Every key and its value, which measures the usage again. Throws when the Host cannot read them. */
   readAll(): Promise<Map<string, Json>>;
   /** An image as a data URL, or null when it is missing. */
@@ -56,6 +65,14 @@ export function diagramStorage(storage: Storage): DiagramStorage {
     await storage.delete(key);
     usage.delete(key);
   };
+  const readAll = async () => {
+    const keys = await storage.keys();
+    const entries = new Map(await Promise.all(keys.map(async (key) => [key, await storage.get(key)] as const)));
+    for (const [key, value] of entries) if (value === null) entries.delete(key);
+    usage.reset(entries);
+    measured = true;
+    return entries;
+  };
   return {
     readIndex: async () => readIndex(await storage.get(INDEX)),
     readDiagram: async (id) => readDiagram(await storage.get(keyOf(id)), id),
@@ -69,14 +86,11 @@ export function diagramStorage(storage: Storage): DiagramStorage {
         await set(INDEX, index);
         await remove(keyOf(id));
       }),
-    readAll: async () => {
-      const keys = await storage.keys();
-      const entries = new Map(await Promise.all(keys.map(async (key) => [key, await storage.get(key)] as const)));
-      for (const [key, value] of entries) if (value === null) entries.delete(key);
-      usage.reset(entries);
-      measured = true;
-      return entries;
-    },
+    readLibraries: async () => readLibraries(await storage.get(LIBRARIES)),
+    writeLibraries: (libraries) => withSaveMessage(() => set(LIBRARIES, libraries)),
+    readDiagrams: async () =>
+      [...(await readAll())].filter(([key]) => key.startsWith(DIAGRAM)).map(([key, value]) => readDiagram(value, key.slice(DIAGRAM.length))),
+    readAll,
     readImage: async (key) => {
       const value = await storage.get(key);
       return typeof value === "string" ? value : null;

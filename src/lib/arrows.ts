@@ -78,8 +78,19 @@ function normalOf(a: Point, b: Point): Point {
   return length === 0 ? { x: 0, y: 0 } : { x: -(b.y - a.y) / length, y: (b.x - a.x) / length };
 }
 
+/**
+ * An end as it is drawn: on a port its shape does not have, such as an anchor taken away from a custom shape, or one whose
+ * definition is deleted, it is automatic. It stays attached, and finds its port again if the port comes back.
+ */
+function drawnEnd(shapes: ReadonlyMap<string, Outlined>, end: Endpoint): Endpoint {
+  if (!isAttached(end) || !end.port) return end;
+  const shape = shapes.get(end.shapeId);
+  return shape && !portsOf(shape).includes(end.port) ? { shapeId: end.shapeId, port: null } : end;
+}
+
 /** The point an end stands for: its port, the center of its shape, or its own point; nowhere (NaN) when its shape is not there. */
 export function anchorOf(shapes: ReadonlyMap<string, Outlined>, end: Endpoint): Point {
+  end = drawnEnd(shapes, end);
   if (!isAttached(end)) return { x: end.x, y: end.y };
   const shape = shapes.get(end.shapeId);
   if (!shape) return { x: NaN, y: NaN };
@@ -95,7 +106,9 @@ export function anchorOf(shapes: ReadonlyMap<string, Outlined>, end: Endpoint): 
  * - arrows that share a port fan out from it, in the order of where they go, so that they do not cross.
  */
 export function layoutArrows(shapes: ReadonlyMap<string, Outlined>, arrows: readonly Routed[]): Map<string, Path> {
-  const drawn = arrows.filter((arrow) => [arrow.from, arrow.to].every((end) => !isAttached(end) || shapes.has(end.shapeId)));
+  const drawn = arrows
+    .filter((arrow) => [arrow.from, arrow.to].every((end) => !isAttached(end) || shapes.has(end.shapeId)))
+    .map((arrow) => ({ ...arrow, from: drawnEnd(shapes, arrow.from), to: drawnEnd(shapes, arrow.to) }));
   const shapeOf = (end: Endpoint) => (isAttached(end) ? shapes.get(end.shapeId) : undefined);
   const anchor = (end: Endpoint) => anchorOf(shapes, end);
   const waypointsOf = (arrow: Routed) => arrow.waypoints ?? [];

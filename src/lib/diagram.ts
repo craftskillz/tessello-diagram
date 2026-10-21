@@ -4,7 +4,7 @@
 // The model is the whole one of the spec, so that what later versions store is read back without loss.
 
 import { endOf, layoutArrows, startOf } from "./arrows.ts";
-import { type Endpoint, isAttached, type Point } from "./geometry.ts";
+import { type Endpoint, isAttached, type Outlined, type Point } from "./geometry.ts";
 
 export const SHAPE_TYPES = ["rect", "ellipse", "database", "circle", "actor", "postit", "text", "image", "custom"] as const;
 export type ShapeType = (typeof SHAPE_TYPES)[number];
@@ -55,6 +55,16 @@ export const keepsRatio = (type: ShapeType): boolean => type === "actor" || type
 const TEXT_ALIGNS = ["left", "center", "right"] as const;
 const TEXT_VALIGNS = ["top", "middle", "bottom"] as const;
 export const ROUTES = ["straight", "curved", "elbow"] as const;
+/** Where the text of a custom shape goes: outside its picture, on one side, or over it. */
+export const LABEL_PLACEMENTS = ["below", "above", "right", "left", "center"] as const;
+export type LabelPlacement = (typeof LABEL_PLACEMENTS)[number];
+
+/** The definition a custom shape is drawn from, in the shape editor, and its name when it was placed, shown if the definition is deleted. */
+export interface CustomShapeRef {
+  libraryId: string;
+  shapeId: string;
+  name: string;
+}
 export const HEADS = ["none", "start", "end", "both"] as const;
 
 export interface Shape {
@@ -84,6 +94,9 @@ export interface Shape {
   z: number;
   /** An image: the key of its picture in the storage, `image:<sha256>` (images.ts). */
   imageKey?: string;
+  /** A custom shape: its definition, and where its text goes, taken from its definition and changed on the shape itself. */
+  customShapeRef?: CustomShapeRef;
+  labelPlacement?: LabelPlacement;
 }
 
 export interface Arrow {
@@ -184,12 +197,13 @@ export function newDiagram(id: string, title: string, updatedAt: number): Diagra
 
 /**
  * Removes a shape. The ends of arrows attached to it become free, where they were drawn: no arrow disappears, unless
- * `withArrows` asks to remove them too, but a locked arrow stays.
+ * `withArrows` asks to remove them too, but a locked arrow stays. `outline` gives a custom shape the anchors of its
+ * definition (library.ts).
  */
-export function removeShape(diagram: Diagram, id: string, { withArrows = false } = {}): void {
+export function removeShape(diagram: Diagram, id: string, { withArrows = false, outline = (shape: Shape): Outlined => shape } = {}): void {
   const attached = (end: Endpoint) => isAttached(end) && end.shapeId === id;
   if (withArrows) diagram.arrows = diagram.arrows.filter((arrow) => arrow.locked || (!attached(arrow.from) && !attached(arrow.to)));
-  const paths = layoutArrows(new Map(diagram.shapes.map((shape) => [shape.id, shape])), diagram.arrows);
+  const paths = layoutArrows(new Map(diagram.shapes.map((shape) => [shape.id, outline(shape)])), diagram.arrows);
   for (const arrow of diagram.arrows) {
     const path = paths.get(arrow.id);
     if (!path) continue;
@@ -248,17 +262,17 @@ export const newId = (prefix: string) => `${prefix}-${Date.now().toString(36)}-$
 // ── Defensive reading ──────────────────────────────────────────────────────
 
 /** A stored object, before it is read. */
-type StoredFields = Record<string, unknown>;
+export type StoredFields = Record<string, unknown>;
 
-const isRecord = (value: unknown): value is StoredFields => typeof value === "object" && value !== null && !Array.isArray(value);
+export const isRecord = (value: unknown): value is StoredFields => typeof value === "object" && value !== null && !Array.isArray(value);
 const isNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
-const isText = (value: unknown): value is string => typeof value === "string";
+export const isText = (value: unknown): value is string => typeof value === "string";
 
 const numberOr = (value: unknown, fallback: number) => (isNumber(value) ? value : fallback);
 const positiveOr = (value: unknown, fallback: number) => (isNumber(value) && value > 0 ? value : fallback);
 const textOr = (value: unknown, fallback: string) => (isText(value) ? value : fallback);
-const oneOf = <T extends string>(choices: readonly T[], value: unknown, fallback: T): T => (choices.includes(value as T) ? (value as T) : fallback);
-const listOf = <T>(value: unknown, read: (item: unknown) => T | null): T[] =>
+export const oneOf = <T extends string>(choices: readonly T[], value: unknown, fallback: T): T => (choices.includes(value as T) ? (value as T) : fallback);
+export const listOf = <T>(value: unknown, read: (item: unknown) => T | null): T[] =>
   Array.isArray(value) ? value.map(read).filter((item): item is T => item !== null) : [];
 
 /** The list of diagrams; nothing stored yet is an empty list. */
@@ -301,6 +315,16 @@ function readShape(value: unknown): Shape | null {
     locked: value.locked === true,
     link: isText(value.link) ? value.link : null,
     ...(shape.type === "image" && isText(value.imageKey) ? { imageKey: value.imageKey } : {}),
+    ...(shape.type === "custom" ? readCustom(value) : {}),
+  };
+}
+
+/** The definition of a custom shape and where its text goes; one without a definition is drawn as a deleted one. */
+function readCustom(value: StoredFields): Pick<Shape, "customShapeRef" | "labelPlacement"> {
+  const ref = isRecord(value.customShapeRef) ? value.customShapeRef : {};
+  return {
+    customShapeRef: { libraryId: textOr(ref.libraryId, ""), shapeId: textOr(ref.shapeId, ""), name: textOr(ref.name, "") },
+    labelPlacement: oneOf(LABEL_PLACEMENTS, value.labelPlacement, "below"),
   };
 }
 

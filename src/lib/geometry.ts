@@ -26,9 +26,20 @@ function rotate({ x, y }: Point, degrees: number): Point {
 /** The point in the frame of a box: from its center, without its rotation. */
 const toLocal = (box: Box, point: Point): Point => rotate({ x: point.x - box.x, y: point.y - box.y }, -box.rotation);
 
-/** The box of a shape and its type, which gives its outline: a box without a type is a rectangle. */
+/** A port of a custom shape, set in the shape editor: where it is, as parts of the width and height of the shape from its top-left corner. */
+export interface Anchor {
+  id: string;
+  x: number;
+  y: number;
+}
+
+/**
+ * The box of a shape and its type, which gives its outline: a box without a type is a rectangle. A custom shape is a
+ * rectangle too, whose ports are the anchors of its definition: none when it has no definition.
+ */
 export interface Outlined extends Box {
   type?: ShapeType;
+  anchors?: readonly Anchor[];
 }
 
 /**
@@ -99,14 +110,25 @@ const PORT_SIDES: Record<string, Point> = {
   NW: { x: -1, y: -1 },
 };
 
-/** The ports a shape offers. Custom shapes get theirs from the shape editor (ticket 09); until then, none. */
-export const portsOf = (shape: { type?: ShapeType }): readonly string[] => (shape.type === "custom" ? [] : PORTS);
+/** The ports a shape offers: the eight of a built-in shape, or the anchors of a custom shape, maybe none. */
+export const portsOf = (shape: { type?: ShapeType; anchors?: readonly Anchor[] }): readonly string[] =>
+  shape.type === "custom" ? (shape.anchors ?? []).map((anchor) => anchor.id) : PORTS;
+
+/** Where an anchor of a custom shape is, in the frame of the shape; none for a port it does not have. */
+function anchorPoint(shape: Outlined, port: string): Point | undefined {
+  const anchor = shape.anchors?.find((anchor) => anchor.id === port);
+  return anchor && { x: (anchor.x - 0.5) * shape.w, y: (anchor.y - 0.5) * shape.h };
+}
 
 /**
  * Where a port of a shape is, on its real outline: the corners of a rectangle, on the curve of an ellipse or a circle,
  * where the sides of a database meet its lids. It follows the rotation of the shape. An unknown port is the center.
  */
 export function portPoint(shape: Outlined, port: string): Point {
+  if (shape.type === "custom") {
+    const at = rotate(anchorPoint(shape, port) ?? { x: 0, y: 0 }, shape.rotation);
+    return { x: shape.x + at.x, y: shape.y + at.y };
+  }
   const side = PORT_SIDES[port];
   if (!side) return { x: shape.x, y: shape.y };
   const a = shape.w / 2;
@@ -117,10 +139,10 @@ export function portPoint(shape: Outlined, port: string): Point {
   return { x: shape.x + onOutline.x, y: shape.y + onOutline.y };
 }
 
-/** The direction a port faces, away from the center of its shape, as a unit vector. */
+/** The direction a port faces, away from the center of its shape, as a unit vector; none for a port at the center. */
 export function portDirection(shape: Outlined, port: string): Point {
-  const side = PORT_SIDES[port];
-  if (!side) return { x: 0, y: 0 };
+  const side = shape.type === "custom" ? anchorPoint(shape, port) : PORT_SIDES[port];
+  if (!side || (side.x === 0 && side.y === 0)) return { x: 0, y: 0 };
   const turned = rotate(side, shape.rotation);
   const length = Math.hypot(turned.x, turned.y);
   return { x: turned.x / length, y: turned.y / length };

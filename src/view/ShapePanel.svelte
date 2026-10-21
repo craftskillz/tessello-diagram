@@ -2,7 +2,7 @@
   // The style of the selected shapes: color, opacity of the fill, text size and alignments, rotation of the shape and
   // of its text, and order; their group, their lock, and the copy of a style. A control applies to every selected shape,
   // and a change is saved when it is made. The panel is docked beside the canvas, so that it never hides the drawing.
-  import { clampFontSize, COLORS, FONT_SIZES, groupShapes, reorder, type Shape, ungroupShapes } from "../lib/diagram.ts";
+  import { clampFontSize, COLORS, FONT_SIZES, groupShapes, LABEL_PLACEMENTS, type LabelPlacement, reorder, type Shape, ungroupShapes } from "../lib/diagram.ts";
   import { degrees } from "../lib/geometry.ts";
   import { t } from "../lib/i18n.ts";
   import { diagrams, save, ui } from "../lib/store.svelte.ts";
@@ -122,6 +122,18 @@
         {/each}
       </div>
     </div>
+
+    {#if shapes.every((shape) => shape.type === "custom")}
+      <!-- Where the text of a custom shape goes, taken from its definition, changed on these shapes only. -->
+      <label class="dg-field">
+        <span>{t("label_placement")}</span>
+        <select value={shared("labelPlacement") ?? ""} onchange={(event) => apply((shape) => (shape.labelPlacement = event.currentTarget.value as LabelPlacement))}>
+          {#each LABEL_PLACEMENTS as placement (placement)}
+            <option value={placement}>{t(`placement_${placement}`)}</option>
+          {/each}
+        </select>
+      </label>
+    {/if}
 
     <div class="dg-row">
       <span class="dg-label">{t("rotation")}</span>

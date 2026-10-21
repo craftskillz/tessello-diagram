@@ -123,6 +123,32 @@ describe("the ports of a shape", () => {
   });
 });
 
+describe("the ports of a custom shape", () => {
+  // Its anchors are where its definition puts them, as parts of its width and height from its top-left corner.
+  const custom = { type: "custom" as const, x: 0, y: 0, w: 100, h: 40, rotation: 0, anchors: [{ id: "in", x: 0, y: 0.5 }, { id: "top", x: 0.75, y: 0 }] };
+
+  test("are the anchors of its definition, and none without one", () => {
+    assert.deepEqual(portsOf(custom), ["in", "top"]);
+    assert.deepEqual(portsOf({ type: "custom" }), []);
+  });
+
+  test("are where its anchors are, scaled to its size", () => {
+    close(portPoint(custom, "in"), { x: -50, y: 0 });
+    close(portPoint({ ...custom, x: 200, y: 100, w: 200 }, "top"), { x: 250, y: 80 });
+  });
+
+  test("follow its rotation", () => {
+    // Turned by 90° clockwise, the point a quarter from the right of its top side is below its center, on the right.
+    close(portPoint({ ...custom, rotation: 90 }, "top"), { x: 20, y: 25 });
+    close(portPoint({ ...custom, rotation: 180 }, "in"), { x: 50, y: 0 });
+  });
+
+  test("follow its rotation and its size together", () => {
+    // 200 × 40 and turned by 90°: the point a quarter from the right of its top side is 50 below its center, 20 right.
+    close(portPoint({ ...custom, x: 10, y: 10, w: 200, rotation: 90 }, "top"), { x: 30, y: 60 });
+  });
+});
+
 describe("the shape under a point", () => {
   const back = { id: "back", x: 0, y: 0, w: 100, h: 40, rotation: 0, z: 0 };
   const front = { id: "front", x: 40, y: 0, w: 40, h: 40, rotation: 0, z: 1 };

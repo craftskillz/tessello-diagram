@@ -2,7 +2,8 @@
   // The title of the open diagram, the tools, and whether the last change is saved. There is no Save button: each
   // change is saved when its gesture ends.
   import { t } from "../lib/i18n.ts";
-  import { diagrams, rename, save, status, type Tool, ui } from "../lib/store.svelte.ts";
+  import { diagrams, rename, save, type Tool, ui } from "../lib/store.svelte.ts";
+  import SaveStatus from "./SaveStatus.svelte";
 
   const TOOLS: { tool: Tool; label: () => string; icon: string }[] = [
     { tool: "select", label: () => t("tool_select"), icon: "M5 3l14 8-6 2-3 6z" },
@@ -59,9 +60,8 @@
       <button type="button" class="dg-btn" aria-pressed={diagram.guides} title={t("guides_hint")} onclick={() => ((diagram.guides = !diagram.guides), void save())}>{t("guides")}</button>
     </div>
   {/if}
-  <p class="dg-save" class:failed={status.saveError} role="status">
-    {status.saveError ? t("save_failed") : status.saving ? t("saving") : t("saved")}
-  </p>
+  <button type="button" class="dg-btn" title={t("shapes_open_hint")} onclick={() => (ui.screen = "shapes")}>{t("shapes_open")}</button>
+  <SaveStatus />
 </header>
 
 <style>
@@ -108,14 +108,5 @@
     stroke-width: 2;
     stroke-linejoin: round;
     stroke-linecap: round;
-  }
-  .dg-save {
-    margin: 0 0 0 auto;
-    font-size: 12px;
-    color: var(--muted);
-  }
-  .dg-save.failed {
-    color: var(--red);
-    font-weight: 600;
   }
 </style>

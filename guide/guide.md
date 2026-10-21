@@ -85,6 +85,18 @@ A picture is reduced to 1600 pixels on its longest side and stored once, however
 
 If a picture can no longer be found in the storage, its place shows a **missing image** frame.
 
+## Custom shapes
+
+Click **Shapes** in the toolbar to open the shape editor, and **← Back to diagram** to return. Shapes are kept in libraries: pick one in **Library**, create another with **+**, and rename it in **Library name**.
+
+Click **New shape** and choose its **Image**: the shape is saved as soon as it has one, and every change after that is saved as you make it. Give it a name, a width and a height (16 to 1200), and choose where its text goes: below, above, to the right, to the left, or centered on the picture.
+
+Its anchors are the points where arrows attach to it. Click the preview to add one, drag it to move it, and rename or remove it in the list; two anchors never share a name. **Use 8 default anchors** puts back the corners and the middles of the sides. **Clear anchors** leaves none: arrows then attach to the shape automatically only.
+
+The shapes ticked **Show in diagram palette** appear at the bottom of the canvas. Click one, then double-click the canvas to place it, at its size and with its name as its text. The panel changes where its text goes on that shape alone. A change made in the editor, to its picture or its anchors, shows on every shape already placed; untick **Show in diagram palette** to stop offering it without changing them.
+
+**Delete shape** asks first, and tells you how many diagrams use it. There, it then shows as a dashed frame with its name, and its arrows stay attached.
+
 ## Grid, guides and zoom
 
 A shape you move snaps to the **Grid**, every 20 units; press **G** or click **Grid (G)** to turn it off or on. While you move a shape, **Guides** line it up with the edges and centers of the other shapes, and show the line it follows; they win over the grid. Both are on in a new diagram, and each diagram keeps its own choice.

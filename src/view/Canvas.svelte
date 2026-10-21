@@ -9,7 +9,8 @@
   import { t } from "../lib/i18n.ts";
   import { alignment, type Bounds, boundsOf, fitView, GRID, type Guide, pointsBounds, scaleBoxes, snapToGrid } from "../lib/placement.ts";
   import { captionOf } from "../lib/images.ts";
-  import { images, insertImage, redo, requestImages, save, type Tool, ui, undo } from "../lib/store.svelte.ts";
+  import { definitionOf, outlineOf, paletteOf, placeCustomShape } from "../lib/library.ts";
+  import { images, insertImage, redo, requestImages, save, shapeLibraries, type Tool, ui, undo } from "../lib/store.svelte.ts";
   import { canvasMeasure, layoutLabel, LINE_HEIGHT } from "../lib/text.ts";
   import ArrowPanel from "./ArrowPanel.svelte";
   import ShapePanel from "./ShapePanel.svelte";
@@ -73,6 +74,11 @@
   let editing = $state<{ kind: "shape" | "label"; id: string; text: string } | null>(null);
 
   const shapes = $derived(new Map(diagram.shapes.map((shape) => [shape.id, shape])));
+  /** The shapes as the geometry sees them: a custom shape with the anchors of its definition. Only read, never changed. */
+  const outlines = $derived(new Map(diagram.shapes.map((shape) => [shape.id, outlineOf(shapeLibraries.list, shape)])));
+  const outlined = $derived([...outlines.values()]);
+  /** The custom shapes the palette below the canvas offers. */
+  const palette = $derived(paletteOf(shapeLibraries.list));
   const arrows = $derived(new Map(diagram.arrows.map((arrow) => [arrow.id, arrow])));
   /** Shapes and arrows in drawing order: higher `z` in front. */
   const items = $derived(
@@ -87,7 +93,7 @@
   /** The ids of what can be selected by a rectangle or Ctrl/Cmd+A, or deleted: what is not locked. */
   const unlockedIds = (ids: readonly string[]) => ids.filter((id) => !(shapes.get(id) ?? arrows.get(id))?.locked);
   /** The path of each arrow: the line, its click zone, its handles and its label all follow it. */
-  const paths = $derived(layoutArrows(shapes, diagram.arrows));
+  const paths = $derived(layoutArrows(outlines, diagram.arrows));
   /**
    * The arrow that shows the handles of its ends: a single selected arrow, with the Select tool, unless it is locked.
    * With the Arrow tool, a press on its end starts a new arrow, which then shares its port.
@@ -115,7 +121,7 @@
    */
   const aim = $derived(
     pointer && (gesture?.kind === "draw" || gesture?.kind === "end" || (!gesture && ui.tool === "arrow"))
-      ? endAt(diagram.shapes, gesture?.kind === "draw" ? gesture.at : pointer, reach(PORT_REACH))
+      ? endAt(outlined, gesture?.kind === "draw" ? gesture.at : pointer, reach(PORT_REACH))
       : undefined,
   );
   /** Whether the Select tool hovers an arrow, which the cursor then shows. */
@@ -123,7 +129,7 @@
   const isFree = (arrow: Arrow) => !isAttached(arrow.from) && !isAttached(arrow.to);
   /** The end an arrow being drawn gets at a point: what is there, or free if it would join the start to itself. */
   function endingAt(from: Endpoint, at: Point): Endpoint {
-    const { end } = endAt(diagram.shapes, at, reach(PORT_REACH));
+    const { end } = endAt(outlined, at, reach(PORT_REACH));
     return isDrawable(from, end) ? end : { x: at.x, y: at.y };
   }
   /** Where the label of an arrow is, its lines and the size of its box: its center slides along the path of the arrow. */
@@ -150,9 +156,13 @@
   /** The shape that shows the handles to resize and turn it: a single selected shape, unless it is locked. */
   const withHandles = $derived(selectedShapes.length === 1 && !editing && !selectedShapes[0].locked ? selectedShapes[0] : undefined);
 
-  // The images the diagram shows are read from the storage once.
+  // The images the diagram shows, its custom shapes and the palette included, are read from the storage once.
   $effect(() => {
-    requestImages(diagram.shapes.flatMap((shape) => (shape.imageKey ? [shape.imageKey] : [])));
+    requestImages([
+      ...diagram.shapes.flatMap((shape) => (shape.imageKey ? [shape.imageKey] : [])),
+      ...diagram.shapes.flatMap((shape) => definitionOf(shapeLibraries.list, shape)?.imageKey ?? []),
+      ...palette.map(({ shape }) => shape.imageKey),
+    ]);
   });
 
   // A diagram opens with its origin in the middle of the canvas, and nothing selected.
@@ -186,7 +196,7 @@
     const ctrl = event.ctrlKey || event.metaKey;
     // The Arrow tool draws from anywhere, but not from a locked shape.
     if (ui.tool === "arrow") {
-      const start = endAt(diagram.shapes, at, reach(PORT_REACH));
+      const start = endAt(outlined, at, reach(PORT_REACH));
       if (start.shape?.locked) return;
       return capture(event, { kind: "draw", from: start.end, press: { x: event.clientX, y: event.clientY }, at, moved: false });
     }
@@ -228,14 +238,14 @@
     const at = toDrawing(event);
     if (gesture.kind === "draw") {
       // Shift turns the arrow by steps of 45° around its start.
-      gesture.at = event.shiftKey ? constrainAngle(anchorOf(shapes, gesture.from), at) : at;
+      gesture.at = event.shiftKey ? constrainAngle(anchorOf(outlines, gesture.from), at) : at;
       if (Math.hypot(event.clientX - gesture.press.x, event.clientY - gesture.press.y) > DRAG) gesture.moved = true;
     } else if (gesture.kind === "end") {
       const arrow = diagram.arrows.find((arrow) => arrow.id === (gesture as { id: string }).id);
       if (!arrow) return;
       // Shift turns the arrow by steps of 45° around its other end.
       const other = gesture.which === "from" ? arrow.to : arrow.from;
-      arrow[gesture.which] = endingAt(other, event.shiftKey ? constrainAngle(anchorOf(shapes, other), at) : at);
+      arrow[gesture.which] = endingAt(other, event.shiftKey ? constrainAngle(anchorOf(outlines, other), at) : at);
       gesture.moved = true;
     } else if (gesture.kind === "waypoint") {
       const arrow = diagram.arrows.find((arrow) => arrow.id === (gesture as { id: string }).id);
@@ -384,8 +394,8 @@
 
   /** Moves a waypoint to a point, aligned with the one before it and the one after it, or with the end there. */
   function moveWaypoint(arrow: Arrow, index: number, at: Point) {
-    const before = index === 0 ? anchorOf(shapes, arrow.from) : arrow.waypoints[index - 1];
-    const after = index === arrow.waypoints.length - 1 ? anchorOf(shapes, arrow.to) : arrow.waypoints[index + 1];
+    const before = index === 0 ? anchorOf(outlines, arrow.from) : arrow.waypoints[index - 1];
+    const after = index === arrow.waypoints.length - 1 ? anchorOf(outlines, arrow.to) : arrow.waypoints[index + 1];
     arrow.waypoints[index] = snapWaypoint(at, [before, after], reach(SNAP));
   }
 
@@ -459,6 +469,13 @@
       pickedAt = at;
       return picker?.click();
     }
+    // The Custom tool places the shape chosen in the palette, at its size and with its name: its text is not edited.
+    if (ui.tool === "custom") {
+      const chosen = palette.find(({ library, shape }) => library.id === ui.customShape?.libraryId && shape.id === ui.customShape?.shapeId);
+      if (!chosen) return;
+      ui.selection = [placeCustomShape(diagram, chosen.library, chosen.shape, at).id];
+      return void save();
+    }
     const created = newShape(newId("shape"), at, nextZ(diagram), ui.tool);
     diagram.shapes.push(created);
     ui.selection = [created.id];
@@ -525,7 +542,7 @@
       const removed = unlockedIds(ui.selection);
       if (!removed.length) return;
       diagram.arrows = diagram.arrows.filter((arrow) => !removed.includes(arrow.id));
-      for (const id of removed) if (shapes.has(id)) removeShape(diagram, id, { withArrows: ctrl });
+      for (const id of removed) if (shapes.has(id)) removeShape(diagram, id, { withArrows: ctrl, outline: (shape) => outlineOf(shapeLibraries.list, shape) });
       ui.selection = ui.selection.filter((id) => !removed.includes(id));
       void save();
     } else if (key === "g" && !ctrl && !event.altKey) {
@@ -694,12 +711,14 @@
     <g transform="translate({pan.x} {pan.y}) scale({zoom})">
       {#each items as item (item.kind === "shape" ? item.shape.id : item.arrow.id)}
         {#if item.kind === "shape"}
+          {@const definition = item.shape.type === "custom" ? definitionOf(shapeLibraries.list, item.shape) : undefined}
           <ShapeView
             shape={item.shape}
             label={nameOf(item.shape.id)}
             selected={ui.selection.includes(item.shape.id)}
             editing={editing?.kind === "shape" && editing.id === item.shape.id}
-            image={item.shape.imageKey ? images[item.shape.imageKey] : undefined}
+            image={item.shape.imageKey ? images[item.shape.imageKey] : definition ? images[definition.imageKey] : undefined}
+            deleted={item.shape.type === "custom" && !definition}
             {measure}
           />
         {:else}
@@ -752,7 +771,7 @@
       {/each}
 
       {#if gesture?.kind === "draw" && gesture.moved}
-        {@const preview = layoutArrows(shapes, [{ id: "", from: gesture.from, to: endingAt(gesture.from, gesture.at), route: "straight" }]).get("")}
+        {@const preview = layoutArrows(outlines, [{ id: "", from: gesture.from, to: endingAt(gesture.from, gesture.at), route: "straight" }]).get("")}
         {#if preview}
           <path class="dg-arrow-preview" d={pathData(preview)} stroke-width={2 / zoom} />
         {/if}
@@ -984,6 +1003,27 @@
 
   <input bind:this={picker} type="file" accept="image/*" hidden aria-label={t("choose_image")} onchange={onPicked} />
 
+  {#if palette.length}
+    <!-- The custom shapes offered: a click chooses one, which a double-click on the canvas then places. -->
+    <div class="dg-palette" role="group" aria-label={t("palette")}>
+      {#each palette as { library, shape } (`${library.id}/${shape.id}`)}
+        {@const name = t("palette_shape", { library: library.name, shape: shape.name })}
+        <button
+          type="button"
+          class="dg-btn"
+          aria-label={name}
+          title={name}
+          aria-pressed={ui.tool === "custom" && ui.customShape?.libraryId === library.id && ui.customShape?.shapeId === shape.id}
+          onclick={() => ((ui.tool = "custom"), (ui.customShape = { libraryId: library.id, shapeId: shape.id }))}
+        >
+          {#if images[shape.imageKey]}
+            <img src={images[shape.imageKey]} alt="" draggable="false" />
+          {/if}
+        </button>
+      {/each}
+    </div>
+  {/if}
+
   <div class="dg-zoom" role="group" aria-label={t("zoom")}>
     <button type="button" class="dg-btn" aria-label={t("zoom_out")} title={t("zoom_out")} onclick={() => zoomTo(zoom / ZOOM.step)}>−</button>
     <output aria-label={t("zoom")}>{Math.round(zoom * 100)}%</output>
@@ -1174,6 +1214,29 @@
     border-radius: 10px;
     background: var(--panel);
     font-size: 12px;
+  }
+  .dg-palette {
+    position: absolute;
+    left: 50%;
+    bottom: 12px;
+    transform: translateX(-50%);
+    max-width: calc(100% - 320px);
+    display: flex;
+    gap: 4px;
+    padding: 4px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--panel);
+    overflow-x: auto;
+  }
+  .dg-palette .dg-btn {
+    display: inline-flex;
+    padding: 3px;
+  }
+  .dg-palette img {
+    width: 32px;
+    height: 32px;
+    object-fit: contain;
   }
   .dg-zoom output {
     min-width: 42px;

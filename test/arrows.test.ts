@@ -57,6 +57,29 @@ describe("the end of an arrow released at a point", () => {
   });
 });
 
+describe("an arrow attached to a custom shape", () => {
+  const icon = rect("icon", 0, 0, { type: "custom", w: 100, h: 100, anchors: [{ id: "top", x: 0.5, y: 0 }, { id: "right", x: 1, y: 0.25 }] });
+  const b = rect("b", 400, 0);
+
+  test("attaches to the anchors of its definition", () => {
+    assert.deepEqual(endAt([icon], { x: 50, y: -25 }, 8).end, { shapeId: "icon", port: "right" });
+    // Its corners are not ports: there, the end is automatic.
+    assert.deepEqual(endAt([icon], { x: 50, y: 50 }, 8).end, { shapeId: "icon", port: null });
+  });
+
+  test("starts on its anchor", () => {
+    const path = layoutArrows(new Map([["icon", icon], ["b", b]]), [{ id: "x", from: { shapeId: "icon", port: "right" }, to: { shapeId: "b", port: null }, route: "straight" }]).get("x")!;
+    close(startOf(path), { x: 50, y: -25 });
+  });
+
+  test("on a port its shape no longer has, is automatic: it stops at the outline, rather than at the center", () => {
+    const gone = { ...icon, anchors: [] };
+    const path = layoutArrows(new Map([["icon", gone], ["b", b]]), [{ id: "x", from: { shapeId: "icon", port: "right" }, to: { shapeId: "b", port: null }, route: "straight" }]).get("x")!;
+    close(startOf(path), { x: 50, y: 0 });
+    close(endOf(path), { x: 340, y: 0 });
+  });
+});
+
 describe("the path of an arrow", () => {
   const a = rect("a", -200, 0);
   const b = rect("b", 200, 0);

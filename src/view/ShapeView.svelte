@@ -2,7 +2,8 @@
   // A shape as the original draws it: the database has its cylinder, the post-it its folded corner, the actor its
   // silhouette, and the free text no outline. Its colors come from its palette key (base.css), in the light or dark
   // variant; the opacity is that of its fill only, so that its outline and text stay readable. An image shows its
-  // picture, read from the storage, or a "missing image" frame when the storage no longer has it.
+  // picture, read from the storage, or a "missing image" frame when the storage no longer has it. A custom shape shows
+  // the picture of its definition, or a dashed frame with its name when its definition is deleted.
   import type { Shape } from "../lib/diagram.ts";
   import { lidOf } from "../lib/geometry.ts";
   import { t } from "../lib/i18n.ts";
@@ -14,6 +15,7 @@
     selected,
     editing,
     image,
+    deleted = false,
     measure,
   }: {
     shape: Shape;
@@ -22,6 +24,8 @@
     editing: boolean;
     /** The picture of an image as a data URL, null when it is missing, undefined while it is read. */
     image?: string | null;
+    /** A custom shape whose definition is deleted. */
+    deleted?: boolean;
     measure: Measure;
   } = $props();
 
@@ -78,6 +82,14 @@
       <text class="dg-missing" font-size="12" text-anchor="middle" dominant-baseline="central">{t("missing_image")}</text>
     {/if}
     <rect class="dg-frame" class:missing={image === null} x={-w / 2} y={-h / 2} width={w} height={h} />
+  {:else if shape.type === "custom"}
+    <!-- Its name, unless its text already says it. -->
+    {#if deleted && shape.customShapeRef?.name !== shape.text.trim()}
+      <text class="dg-missing" font-size="12" text-anchor="middle" dominant-baseline="central">{shape.customShapeRef?.name}</text>
+    {:else if image}
+      <image href={image} x={-w / 2} y={-h / 2} width={w} height={h} preserveAspectRatio="none" opacity={shape.opacity} />
+    {/if}
+    <rect class="dg-frame" class:missing={deleted} x={-w / 2} y={-h / 2} width={w} height={h} />
   {:else}
     <rect class="dg-body" x={-w / 2} y={-h / 2} width={w} height={h} rx="6" fill-opacity={shape.opacity} />
   {/if}
@@ -117,7 +129,7 @@
     stroke: none;
   }
   /* A free text without text would be invisible: its frame shows, as when it is selected. */
-  .dg-shape:not([data-type="image"]).empty .dg-frame,
+  .dg-shape[data-type="text"].empty .dg-frame,
   .dg-frame.missing,
   .selected .dg-frame {
     stroke: var(--muted);
