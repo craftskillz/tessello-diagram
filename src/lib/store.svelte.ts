@@ -1,10 +1,12 @@
 // The diagrams of the View, as Svelte state shared by its parts, kept in the Host storage (lib/storage.ts).
 // A change is written at the end of each gesture, since the Host may unload the View without warning
 // (CONVENTION.md §4). Diagrams that could not be read cannot be changed, so that an empty screen never overwrites them.
+// Each change saved is also a step of the undo history (lib/history.ts), which starts over when a diagram is opened.
 
 import type { ConnectedModule } from "@tessello/sdk";
 import type { Clip, Style } from "./clipboard.ts";
 import { type BuiltInType, type Diagram, type DiagramEntry, newDiagram, newId } from "./diagram.ts";
+import { type History, isPresent, record, redo as redoInHistory, startHistory, undo as undoInHistory } from "./history.ts";
 import { t, titleOf } from "./i18n.ts";
 import { type DiagramStorage, diagramStorage, reasonOf } from "./storage.ts";
 
@@ -43,6 +45,8 @@ let storage: DiagramStorage;
 let requested: string | undefined;
 /** Writes go one after the other, so that an older state never lands after a newer one. */
 let writes = Promise.resolve();
+/** The undo history of the open diagram. */
+let history: History | null = null;
 
 export function connectStore(host: ConnectedModule): void {
   storage = diagramStorage(host.storage);
@@ -59,7 +63,7 @@ export async function load(): Promise<void> {
     diagrams.list = unsaved ? [...stored.filter((entry) => entry.id !== unsaved.id), entryOf(unsaved)] : stored;
     const id = [requested, diagrams.open?.id].find((id) => id && diagrams.list.some((entry) => entry.id === id)) ?? mostRecent()?.id;
     requested = undefined;
-    if (!(unsaved && id === unsaved.id)) diagrams.open = id ? await storage.readDiagram(id) : null;
+    if (!(unsaved && id === unsaved.id)) show(id ? await storage.readDiagram(id) : null);
     status.loadError = "";
     status.loaded = true;
   } catch (error) {
@@ -71,6 +75,16 @@ export async function load(): Promise<void> {
 function blockOn(error: unknown): void {
   status.loaded = false;
   status.loadError = t("load_error", { reason: reasonOf(error) });
+}
+
+/**
+ * Opens a diagram, with nothing to undo. The open diagram read again as it was, when the View is shown again, keeps its
+ * history; changed meanwhile, its history starts over, so that an undo never overwrites a change made elsewhere.
+ */
+function show(diagram: Diagram | null): void {
+  const goesOn = diagram && history && diagram.id === diagrams.open?.id && isPresent(history, diagram);
+  diagrams.open = diagram;
+  if (!goesOn) history = diagram && startHistory(diagram);
 }
 
 const entryOf = ({ id, title, updatedAt }: Diagram): DiagramEntry => ({ id, title, updatedAt });
@@ -87,16 +101,20 @@ export function applyParams(params: Record<string, string> = {}): void {
 export async function open(id: string): Promise<void> {
   if (id === diagrams.open?.id) return;
   try {
-    diagrams.open = await storage.readDiagram(id);
+    show(await storage.readDiagram(id));
   } catch (error) {
     blockOn(error);
   }
 }
 
-/** Writes the open diagram and the list now. A failure is shown to the User; the change stays on screen. */
+/**
+ * Writes the open diagram and the list now, and makes the change a step of the undo history. A failure is shown to
+ * the User; the change stays on screen.
+ */
 export function save(): Promise<void> {
   const diagram = diagrams.open;
   if (!status.loaded || !diagram) return writes;
+  if (history) record(history, diagram);
   diagram.updatedAt = Date.now();
   const entry = entryOf(diagram);
   const at = diagrams.list.findIndex((item) => item.id === diagram.id);
@@ -105,6 +123,22 @@ export function save(): Promise<void> {
   const snapshot = $state.snapshot(diagram);
   const list = $state.snapshot(diagrams.list);
   return enqueue(() => storage.write(snapshot, list));
+}
+
+/** Ctrl/Cmd+Z: brings the open diagram back to before its last change, and saves it. */
+export const undo = (): Promise<void> => travel(undoInHistory);
+
+/** Ctrl/Cmd+Shift+Z: makes again the last change undone, and saves it. */
+export const redo = (): Promise<void> => travel(redoInHistory);
+
+/** Moves the open diagram back or forth in its history, and saves it. */
+function travel(move: (history: History, diagram: Diagram) => boolean): Promise<void> {
+  const diagram = diagrams.open;
+  if (!status.loaded || !diagram || !history || !move(history, diagram)) return writes;
+  // What the step took away is no longer selected.
+  const ids = new Set([...diagram.shapes, ...diagram.arrows].map((item) => item.id));
+  ui.selection = ui.selection.filter((id) => ids.has(id));
+  return save();
 }
 
 /** Queues a write after the others. A failure is shown to the User. */
@@ -125,7 +159,7 @@ function enqueue(write: () => Promise<void>): Promise<void> {
 
 /** Creates "New diagram", opens it and saves it. */
 export function create(): Promise<void> {
-  diagrams.open = newDiagram(newId("diagram"), t("new_diagram"), Date.now());
+  show(newDiagram(newId("diagram"), t("new_diagram"), Date.now()));
   return save();
 }
 
@@ -143,7 +177,7 @@ export async function remove(id: string): Promise<void> {
   const list = $state.snapshot(diagrams.list);
   const removed = enqueue(() => storage.remove(id, list));
   if (diagrams.open?.id === id) {
-    diagrams.open = null;
+    show(null);
     if (diagrams.list[0]) await open(diagrams.list[0].id);
   }
   return removed;

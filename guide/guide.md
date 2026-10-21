@@ -4,6 +4,8 @@
 
 Every change is saved the moment you finish it. There is no Save button.
 
+**Ctrl+Z** (**Cmd+Z** on a Mac) undoes the last change, and **Ctrl+Shift+Z** (**Cmd+Shift+Z**) makes it again. Every change of the diagram can be undone, up to the last 100: shapes, arrows, their style and text, groups, locks, the order, the title, the grid and the guides. Moving around the canvas, zooming and selecting are not changes. The history starts over each time you open a diagram. While you type in a field, these keys undo your typing instead.
+
 ## Your diagrams
 
 The list on the left holds your diagrams. Click **+ New** to create one: it opens at once, titled **New diagram**. Click a title to open that diagram. Rename the open diagram in the title field at the top; an empty title becomes **Untitled**.

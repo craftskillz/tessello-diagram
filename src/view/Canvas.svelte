@@ -8,7 +8,7 @@
   import { type Box, boxWithin, type Corner, cornersOf, cornerSign, degrees, type Endpoint, isAttached, type Point, portPoint, portsOf, resizeBox, shapeAt } from "../lib/geometry.ts";
   import { t } from "../lib/i18n.ts";
   import { alignment, type Bounds, boundsOf, fitView, GRID, type Guide, pointsBounds, scaleBoxes, snapToGrid } from "../lib/placement.ts";
-  import { save, type Tool, ui } from "../lib/store.svelte.ts";
+  import { redo, save, type Tool, ui, undo } from "../lib/store.svelte.ts";
   import { canvasMeasure, layoutLabel, LINE_HEIGHT } from "../lib/text.ts";
   import ArrowPanel from "./ArrowPanel.svelte";
   import ShapePanel from "./ShapePanel.svelte";
@@ -492,6 +492,10 @@
       if ((event.target as HTMLElement).closest("button")) return;
       spaceHeld = true;
       event.preventDefault();
+    } else if (ctrl && key === "z") {
+      // Ctrl/Cmd+Z undoes, with Shift it redoes; not in the middle of a gesture, which is not saved yet.
+      event.preventDefault();
+      if (!gesture) void (event.shiftKey ? redo() : undo());
     } else if (ctrl && key === "a") {
       event.preventDefault();
       ui.selection = unlockedIds([...diagram.shapes.map((shape) => shape.id), ...diagram.arrows.map((arrow) => arrow.id)]);
