@@ -79,6 +79,8 @@ export const ui = $state({
 let storage: DiagramStorage;
 /** The diagram asked for by `params.id`, opened once the list is read. */
 let requested: string | undefined;
+/** Whether `params.new` asked for a new diagram, created once the list is read. */
+let creating = false;
 /** Writes go one after the other, so that an older state never lands after a newer one. */
 let writes = Promise.resolve();
 /** The undo history of the open diagram. */
@@ -93,27 +95,35 @@ export function connectStore(host: ConnectedModule): void {
 }
 
 /**
- * Reads the list and opens a diagram: the one asked for by the params, else the one already open, else the most
- * recently changed. A diagram whose last change could not be saved stays as it is on screen.
+ * Reads the list and opens a diagram: a new one when the params ask for it, else the one asked for by the params, else
+ * the one already open, else the most recently changed. The reading waits for the writes queued before it; a diagram
+ * whose last change could not be saved, or is still being written, stays as it is on screen.
  */
-export async function load(): Promise<void> {
+export const load = (): Promise<void> => queue(read);
+
+async function read(): Promise<void> {
   try {
     const stored = await storage.readIndex();
     const libraries = await storage.readLibraries();
     const defaults = await storage.readDefaults();
-    // Libraries and defaults whose last change could not be saved stay as they are on screen, as a diagram does.
-    if (!status.saveError) {
+    // Writes queued after this reading are newer than what it read.
+    const unwritten = Boolean(status.saveError) || status.saving > 0;
+    // Libraries and defaults whose last change is not written stay as they are on screen, as a diagram does.
+    if (!unwritten) {
       shapeLibraries.list = libraries;
       savedLibraries = JSON.stringify(libraries);
       creation.defaults = defaults;
     }
-    const unsaved = status.saveError ? diagrams.open : null;
+    const unsaved = unwritten ? diagrams.open : null;
     diagrams.list = unsaved ? [...stored.filter((entry) => entry.id !== unsaved.id), entryOf(unsaved)] : stored;
     const id = [requested, diagrams.open?.id].find((id) => id && diagrams.list.some((entry) => entry.id === id)) ?? mostRecent()?.id;
     requested = undefined;
     if (!(unsaved && id === unsaved.id)) show(id ? await storage.readDiagram(id) : null);
     status.loadError = "";
     status.loaded = true;
+    // Not awaited: its write is queued after this reading.
+    if (creating) void create();
+    creating = false;
     void cleanImages();
   } catch (error) {
     blockOn(error);
@@ -140,10 +150,12 @@ const entryOf = ({ id, title, updatedAt }: Diagram): DiagramEntry => ({ id, titl
 
 const mostRecent = () => diagrams.list.reduce<DiagramEntry | undefined>((best, entry) => (!best || entry.updatedAt > best.updatedAt ? entry : best), undefined);
 
-/** Applies the params the View was opened with: `id` opens that diagram. */
+/** Applies the params the View was opened with: `new` creates a diagram, and `id` opens that diagram. */
 export function applyParams(params: Record<string, string> = {}): void {
-  if (!params.id) return;
-  requested = params.id;
+  // The last params win: a new diagram and a diagram to open are never both pending.
+  if (params.new === "true") [creating, requested] = [true, undefined];
+  else if (params.id) [creating, requested] = [false, params.id];
+  else return;
   ui.trail = [];
   if (status.loaded) void load();
 }

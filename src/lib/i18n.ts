@@ -252,6 +252,17 @@ const en = {
   defaults_save_arrow: "Save as default for arrows",
   defaults_saved_shape: "Saved: new {type} shapes take this style.",
   defaults_saved_arrow: "Saved: new arrows take this style.",
+
+  changed_now: "just now",
+  changed_minutes: "{count} min ago",
+  changed_hours: "{count} h ago",
+  changed_yesterday: "yesterday",
+  changed_days: "{count} days ago",
+
+  widget_recent: "Recent diagrams",
+  widget_empty: "No diagrams yet",
+  widget_open: "Open",
+  widget_error: "The diagrams cannot be read.",
 };
 
 type Messages = typeof en;
@@ -508,6 +519,17 @@ const fr: Messages = {
   defaults_save_arrow: "Définir comme valeur par défaut pour les flèches",
   defaults_saved_shape: "Enregistré : les nouvelles formes {type} prennent ce style.",
   defaults_saved_arrow: "Enregistré : les nouvelles flèches prennent ce style.",
+
+  changed_now: "à l'instant",
+  changed_minutes: "il y a {count} min",
+  changed_hours: "il y a {count} h",
+  changed_yesterday: "hier",
+  changed_days: "il y a {count} jours",
+
+  widget_recent: "Diagrammes récents",
+  widget_empty: "Aucun diagramme pour l'instant",
+  widget_open: "Ouvrir",
+  widget_error: "Impossible de lire les diagrammes.",
 };
 
 export type MessageKey = keyof Messages;

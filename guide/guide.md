@@ -12,6 +12,8 @@ The list on the left holds your diagrams. Click **+ New** to create one: it open
 
 To delete a diagram, point at it in the list and click **×**, then confirm. A deleted diagram cannot be brought back.
 
+On the Home, the Diagram Widget lists the four diagrams you changed last, with how long ago. Click one to open it, or **+ New** to open a new diagram.
+
 ## Drawing
 
 Pick a tool at the top, or press its key:

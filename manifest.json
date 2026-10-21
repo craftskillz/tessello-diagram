@@ -8,5 +8,9 @@
   "view": {
     "entry": "view/index.html"
   },
-  "guide": "guide/guide.md"
+  "guide": "guide/guide.md",
+  "widget": {
+    "entry": "widget/index.html",
+    "size": "M"
+  }
 }
