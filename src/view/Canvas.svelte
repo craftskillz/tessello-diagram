@@ -8,7 +8,8 @@
   import { type Box, boxWithin, type Corner, cornersOf, cornerSign, degrees, type Endpoint, isAttached, type Point, portPoint, portsOf, resizeBox, shapeAt } from "../lib/geometry.ts";
   import { t } from "../lib/i18n.ts";
   import { alignment, type Bounds, boundsOf, fitView, GRID, type Guide, pointsBounds, scaleBoxes, snapToGrid } from "../lib/placement.ts";
-  import { redo, save, type Tool, ui, undo } from "../lib/store.svelte.ts";
+  import { captionOf } from "../lib/images.ts";
+  import { images, insertImage, redo, requestImages, save, type Tool, ui, undo } from "../lib/store.svelte.ts";
   import { canvasMeasure, layoutLabel, LINE_HEIGHT } from "../lib/text.ts";
   import ArrowPanel from "./ArrowPanel.svelte";
   import ShapePanel from "./ShapePanel.svelte";
@@ -39,6 +40,9 @@
   const measure = canvasMeasure();
 
   let svg = $state<SVGSVGElement>();
+  /** The file chooser of the Image tool, and where the image chosen will be placed. */
+  let picker = $state<HTMLInputElement>();
+  let pickedAt: Point = { x: 0, y: 0 };
   /** The canvas shows the drawing moved by `pan` (in pixels of the screen) and scaled by `zoom`. */
   let pan = $state({ x: 0, y: 0 });
   let zoom = $state(1);
@@ -145,6 +149,11 @@
   }
   /** The shape that shows the handles to resize and turn it: a single selected shape, unless it is locked. */
   const withHandles = $derived(selectedShapes.length === 1 && !editing && !selectedShapes[0].locked ? selectedShapes[0] : undefined);
+
+  // The images the diagram shows are read from the storage once.
+  $effect(() => {
+    requestImages(diagram.shapes.flatMap((shape) => (shape.imageKey ? [shape.imageKey] : [])));
+  });
 
   // A diagram opens with its origin in the middle of the canvas, and nothing selected.
   $effect(() => {
@@ -445,6 +454,11 @@
     const shape = shapeAt(diagram.shapes, at);
     if (shape) return shape.locked || startEditing(shape.id);
     if (ui.tool === "select" || ui.tool === "arrow") return;
+    // The Image tool asks for a picture, placed where the double-click was.
+    if (ui.tool === "image") {
+      pickedAt = at;
+      return picker?.click();
+    }
     const created = newShape(newId("shape"), at, nextZ(diagram), ui.tool);
     diagram.shapes.push(created);
     ui.selection = [created.id];
@@ -476,10 +490,13 @@
     ({ zoom, pan } = content ? fitView(content, viewport, FIT_MARGIN) : { zoom: 1, pan: { x: viewport.w / 2, y: viewport.h / 2 } });
   }
 
-  const TOOL_KEYS: Record<string, Tool> = { s: "select", r: "rect", e: "ellipse", d: "database", c: "circle", a: "actor", p: "postit", t: "text", f: "arrow" };
+  const TOOL_KEYS: Record<string, Tool> = { s: "select", r: "rect", e: "ellipse", d: "database", c: "circle", a: "actor", p: "postit", t: "text", f: "arrow", i: "image" };
+
+  /** Whether the keys go to a text being edited, a field or a dialog, rather than to the canvas. */
+  const typing = (event: Event) => !!editing || !!(event.target as HTMLElement).closest("input, textarea, [role=dialog]");
 
   function onKeyDown(event: KeyboardEvent) {
-    if (editing || (event.target as HTMLElement).closest("input, textarea, [role=dialog]")) return;
+    if (typing(event)) return;
     const key = event.key.toLowerCase();
     const ctrl = event.ctrlKey || event.metaKey;
     // With Alt, a Mac types another letter: the shortcuts of the style go by the key pressed.
@@ -503,12 +520,6 @@
       if (!ui.selection.length) return;
       ui.clip = copyItems(diagram, ui.selection);
       ui.pastes = 0;
-    } else if (ctrl && key === "v") {
-      // Ticket 08 pastes an image of the system clipboard first, when there is one: the key goes on to the `paste` event.
-      if (!ui.clip?.shapes.length && !ui.clip?.arrows.length) return;
-      ui.pastes++;
-      ui.selection = pasteItems(diagram, ui.clip, PASTE_OFFSET * ui.pastes);
-      void save();
     } else if ((event.key === "Delete" || event.key === "Backspace") && ui.selection.length) {
       // Deleting a shape frees the ends of its arrows; Ctrl/Cmd+Delete deletes its arrows too. Locked items stay.
       const removed = unlockedIds(ui.selection);
@@ -524,6 +535,33 @@
       ui.tool = "select";
       ui.selection = [];
     } else if (!event.ctrlKey && !event.metaKey && !event.altKey && TOOL_KEYS[key]) ui.tool = TOOL_KEYS[key];
+  }
+
+  /**
+   * Ctrl/Cmd+V: an image of the system clipboard is placed in the middle of the view, captioned "image"; without one,
+   * what Ctrl/Cmd+C copied is pasted. Only the `paste` event tells what the system clipboard holds.
+   */
+  function onPaste(event: ClipboardEvent) {
+    if (typing(event)) return;
+    const file = [...(event.clipboardData?.files ?? [])].find((file) => file.type.startsWith("image/"));
+    if (file) {
+      event.preventDefault();
+      return void insertImage(file, captionOf(""), viewCenter());
+    }
+    if (!ui.clip?.shapes.length && !ui.clip?.arrows.length) return;
+    event.preventDefault();
+    ui.pastes++;
+    ui.selection = pasteItems(diagram, ui.clip, PASTE_OFFSET * ui.pastes);
+    void save();
+  }
+
+  /** The point of the drawing in the middle of the canvas. */
+  const viewCenter = (): Point => ({ x: (svg!.clientWidth / 2 - pan.x) / zoom, y: (svg!.clientHeight / 2 - pan.y) / zoom });
+
+  function onPicked(event: Event & { currentTarget: HTMLInputElement }) {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (file) void insertImage(file, captionOf(file.name), pickedAt);
   }
 
   /** "Copy style": the style of the first selected shape, else of the first selected arrow. */
@@ -625,6 +663,7 @@
 <svelte:window
   onkeydown={onKeyDown}
   onkeyup={onKeyUp}
+  onpaste={onPaste}
   onpointermove={onPointerMove}
   onpointerup={onPointerUp}
   onpointercancel={() => (gesture = null)}
@@ -660,6 +699,7 @@
             label={nameOf(item.shape.id)}
             selected={ui.selection.includes(item.shape.id)}
             editing={editing?.kind === "shape" && editing.id === item.shape.id}
+            image={item.shape.imageKey ? images[item.shape.imageKey] : undefined}
             {measure}
           />
         {:else}
@@ -941,6 +981,8 @@
       use:focus
     ></textarea>
   {/if}
+
+  <input bind:this={picker} type="file" accept="image/*" hidden aria-label={t("choose_image")} onchange={onPicked} />
 
   <div class="dg-zoom" role="group" aria-label={t("zoom")}>
     <button type="button" class="dg-btn" aria-label={t("zoom_out")} title={t("zoom_out")} onclick={() => zoomTo(zoom / ZOOM.step)}>−</button>

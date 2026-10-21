@@ -29,6 +29,9 @@ export function startHistory(diagram: Diagram): History {
 /** Whether the diagram is as the history left it: a diagram read again unchanged goes on with its history. */
 export const isPresent = (history: History, diagram: Diagram): boolean => snapshotOf(diagram) === history.present;
 
+/** Every step the history keeps, as JSON: what it holds can still come back, such as the images it shows. */
+export const snapshotsOf = (history: History): string[] => [...history.past, history.present, ...history.future];
+
 /**
  * Records the diagram as a step after the present one: what was undone can no longer be redone. A diagram as it is in
  * the present state, such as one just undone and saved, is not a step.

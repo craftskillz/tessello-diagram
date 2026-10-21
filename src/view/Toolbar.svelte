@@ -14,6 +14,7 @@
     { tool: "postit", label: () => t("tool_postit"), icon: "M4 4h11l5 5v11H4zM15 4v5h5" },
     { tool: "text", label: () => t("tool_text"), icon: "M5 6h14M12 6v13M9 19h6" },
     { tool: "arrow", label: () => t("tool_arrow"), icon: "M4 20L19 5M11 5h8v8" },
+    { tool: "image", label: () => t("tool_image"), icon: "M4 5h16v14H4zM4 16l5-5 4 4 2-2 5 5M15 9.5a1.5 1.5 0 1 0 0.01 0" },
   ];
 
   function onTitleKey(event: KeyboardEvent) {

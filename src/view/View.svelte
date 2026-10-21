@@ -21,6 +21,12 @@
       {#if status.saveError}
         <p class="dg-banner" role="alert">{status.saveError}</p>
       {/if}
+      {#if status.imageError}
+        <div class="dg-banner dg-notice" role="alert">
+          <p>{status.imageError}</p>
+          <button type="button" class="dg-btn" aria-label={t("close")} title={t("close")} onclick={() => (status.imageError = "")}>×</button>
+        </div>
+      {/if}
       {#if diagrams.open}
         <Toolbar />
         <div class="dg-stage">
@@ -63,6 +69,15 @@
     border: 1px solid var(--red);
     background: var(--red-soft);
     font-size: 13px;
+  }
+  .dg-notice {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .dg-notice p {
+    flex: 1;
+    margin: 0;
   }
   .dg-blocked {
     margin: 24px;

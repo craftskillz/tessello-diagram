@@ -19,6 +19,7 @@ Pick a tool at the top, or press its key:
 - **Select (S)**: click a shape or an arrow to select it, drag a shape to move it. **Ctrl+click** (**Cmd+click** on a Mac) adds a shape or an arrow to the selection or takes it out, **Ctrl+A** selects everything, and a drag on an empty spot selects what it surrounds entirely. **Delete** removes the selection: the arrows attached to a removed shape stay where they were, their ends left free. **Ctrl+Delete** (**Cmd+Delete**) also removes the arrows of the shape. **Escape** returns to this tool.
 - **Rectangle (R)**, **Ellipse (E)**, **Database (D)**, **Circle (C)**, **Actor (A)**, **Post-it (P)** and **Free text (T)**: double-click an empty spot to place the shape and type its text. **Enter** applies the text, **Shift+Enter** adds a line, **Escape** abandons it. The text wraps within the width of the shape. Double-click a shape, or click **Edit text**, to change its text.
 - **Arrow (F)**: press anywhere, drag and release. See below.
+- **Image (I)**: double-click an empty spot and choose a picture. See below.
 
 ## Arrows
 
@@ -74,6 +75,16 @@ Click **Lock** to protect the selected shapes or arrows. A locked item is still 
 
 **Ctrl+C** (**Cmd+C**) copies the selected shapes, with the arrows between them. **Ctrl+V** (**Cmd+V**) pastes them, a little further down and to the right each time. A pasted group is a new group, apart from the one it was copied from.
 
+## Images
+
+With the **Image** tool, double-click an empty spot and choose a picture: it is placed there. **Ctrl+V** (**Cmd+V**) pastes a picture you copied elsewhere, such as a screenshot, in the middle of the view.
+
+The picture comes with its caption below it: the name of its file without its extension, or **image** for a pasted picture. The two form a group; double-click the caption to change it like any text, or **Ungroup** them.
+
+A picture is reduced to 1600 pixels on its longest side and stored once, however many times you place it. A picture still larger than about 900 KB, or one that would fill the storage, is refused with a message, and nothing is placed: try a smaller one.
+
+If a picture can no longer be found in the storage, its place shows a **missing image** frame.
+
 ## Grid, guides and zoom
 
 A shape you move snaps to the **Grid**, every 20 units; press **G** or click **Grid (G)** to turn it off or on. While you move a shape, **Guides** line it up with the edges and centers of the other shapes, and show the line it follows; they win over the grid. Both are on in a new diagram, and each diagram keeps its own choice.
@@ -82,9 +93,11 @@ To move around the canvas, use the wheel, or drag while holding **Space** or the
 
 ## Your data
 
-Your diagrams are kept in Tessello's storage on your computer, and nowhere else. The Diagram Module contacts no server. Uninstalling it deletes your diagrams.
+Your diagrams and their pictures are kept in Tessello's storage on your computer, and nowhere else. The Diagram Module contacts no server. Uninstalling it deletes your diagrams.
+
+The gauge below the list of diagrams, **Storage: x.x MB / 5 MB**, shows how much of its storage the Module uses; it turns red past 80%. Pictures take most of it. A picture is removed from the storage once no diagram uses it, and it can no longer be brought back by **Ctrl+Z**: when you open another diagram, or the next time the Diagram Module starts.
 
 ## When something goes wrong
 
-- **Save failed**: your last change is still on screen, but it is not saved and will be lost when you leave. The message tells you why; when the storage is full, delete diagrams you no longer need.
+- **Save failed**: your last change is still on screen, but it is not saved and will be lost when you leave. The message tells you why; when the storage is full, delete pictures or diagrams you no longer need.
 - **Your diagrams could not be read**: nothing can be changed until they are read, so that nothing is lost. Click **Try again**.

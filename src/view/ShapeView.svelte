@@ -1,12 +1,29 @@
 <script lang="ts">
   // A shape as the original draws it: the database has its cylinder, the post-it its folded corner, the actor its
   // silhouette, and the free text no outline. Its colors come from its palette key (base.css), in the light or dark
-  // variant; the opacity is that of its fill only, so that its outline and text stay readable.
+  // variant; the opacity is that of its fill only, so that its outline and text stay readable. An image shows its
+  // picture, read from the storage, or a "missing image" frame when the storage no longer has it.
   import type { Shape } from "../lib/diagram.ts";
   import { lidOf } from "../lib/geometry.ts";
+  import { t } from "../lib/i18n.ts";
   import { layoutText, type Measure } from "../lib/text.ts";
 
-  let { shape, label, selected, editing, measure }: { shape: Shape; label: string; selected: boolean; editing: boolean; measure: Measure } = $props();
+  let {
+    shape,
+    label,
+    selected,
+    editing,
+    image,
+    measure,
+  }: {
+    shape: Shape;
+    label: string;
+    selected: boolean;
+    editing: boolean;
+    /** The picture of an image as a data URL, null when it is missing, undefined while it is read. */
+    image?: string | null;
+    measure: Measure;
+  } = $props();
 
   const w = $derived(shape.w);
   const h = $derived(shape.h);
@@ -54,6 +71,13 @@
     />
   {:else if shape.type === "text"}
     <rect class="dg-frame" x={-w / 2} y={-h / 2} width={w} height={h} rx="3" />
+  {:else if shape.type === "image"}
+    {#if image}
+      <image href={image} x={-w / 2} y={-h / 2} width={w} height={h} preserveAspectRatio="none" opacity={shape.opacity} />
+    {:else if image === null}
+      <text class="dg-missing" font-size="12" text-anchor="middle" dominant-baseline="central">{t("missing_image")}</text>
+    {/if}
+    <rect class="dg-frame" class:missing={image === null} x={-w / 2} y={-h / 2} width={w} height={h} />
   {:else}
     <rect class="dg-body" x={-w / 2} y={-h / 2} width={w} height={h} rx="6" fill-opacity={shape.opacity} />
   {/if}
@@ -93,7 +117,8 @@
     stroke: none;
   }
   /* A free text without text would be invisible: its frame shows, as when it is selected. */
-  .empty .dg-frame,
+  .dg-shape:not([data-type="image"]).empty .dg-frame,
+  .dg-frame.missing,
   .selected .dg-frame {
     stroke: var(--muted);
     stroke-width: 1;
@@ -102,6 +127,10 @@
   text {
     fill: var(--text);
     pointer-events: none;
+  }
+  text.dg-missing {
+    fill: var(--muted);
+    font-style: italic;
   }
   .selected .dg-body,
   .selected .dg-limbs,

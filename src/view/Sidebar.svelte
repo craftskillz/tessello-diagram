@@ -1,9 +1,11 @@
 <script lang="ts">
-  // The list of diagrams: open one, create one, or delete one after a confirmation.
+  // The list of diagrams: open one, create one, or delete one after a confirmation. Below it, how much of the storage
+  // the Module uses, which alerts past `ALERT` of it.
   import { ask } from "../lib/confirmation.svelte.ts";
   import type { DiagramEntry } from "../lib/diagram.ts";
   import { t, titleOf } from "../lib/i18n.ts";
-  import { create, diagrams, open, remove } from "../lib/store.svelte.ts";
+  import { create, diagrams, open, remove, status } from "../lib/store.svelte.ts";
+  import { ALERT, QUOTA, usageText } from "../lib/usage.ts";
 
   async function confirmRemove(entry: DiagramEntry) {
     if (await ask(t("confirm_delete_title"), t("confirm_delete_msg", { title: titleOf(entry.title) }))) await remove(entry.id);
@@ -30,6 +32,16 @@
         </li>
       {/each}
     </ul>
+  {/if}
+  {#if status.usage !== null}
+    {@const gauge = usageText(status.usage)}
+    <div class="dg-usage" class:alert={gauge.alert} title={gauge.alert ? t("storage_usage_alert") : t("storage_usage_hint")}>
+      <p>{t("storage_usage", { usage: gauge.text })}</p>
+      <meter min="0" max={QUOTA} high={QUOTA * ALERT} optimum="0" value={status.usage} aria-label={t("storage_usage", { usage: gauge.text })}></meter>
+      {#if gauge.alert}
+        <p role="alert">{t("storage_usage_alert")}</p>
+      {/if}
+    </div>
   {/if}
 </nav>
 
@@ -116,6 +128,23 @@
   .dg-delete:hover {
     color: var(--red);
     background: var(--red-soft);
+  }
+  .dg-usage {
+    margin-top: auto;
+    padding: 10px 12px;
+    border-top: 1px solid var(--line);
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .dg-usage p {
+    margin: 0 0 4px;
+  }
+  .dg-usage meter {
+    width: 100%;
+  }
+  .dg-usage.alert {
+    color: var(--red);
+    font-weight: 600;
   }
   @media (max-width: 600px) {
     .dg-sidebar {

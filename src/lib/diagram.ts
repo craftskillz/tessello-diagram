@@ -82,6 +82,8 @@ export interface Shape {
   link: string | null;
   /** The drawing order: higher is in front. */
   z: number;
+  /** An image: the key of its picture in the storage, `image:<sha256>` (images.ts). */
+  imageKey?: string;
 }
 
 export interface Arrow {
@@ -298,6 +300,7 @@ function readShape(value: unknown): Shape | null {
     groupId: isText(value.groupId) ? value.groupId : null,
     locked: value.locked === true,
     link: isText(value.link) ? value.link : null,
+    ...(shape.type === "image" && isText(value.imageKey) ? { imageKey: value.imageKey } : {}),
   };
 }
 

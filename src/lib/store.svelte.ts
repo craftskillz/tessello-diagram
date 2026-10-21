@@ -2,13 +2,20 @@
 // A change is written at the end of each gesture, since the Host may unload the View without warning
 // (CONVENTION.md §4). Diagrams that could not be read cannot be changed, so that an empty screen never overwrites them.
 // Each change saved is also a step of the undo history (lib/history.ts), which starts over when a diagram is opened.
+// Images are stored apart from the diagrams (lib/images.ts), read when a diagram shows them, and removed once nothing
+// refers to them any more, the undo history included: when the View starts, when another diagram is opened, and after
+// a change that takes an image away.
 
 import type { ConnectedModule } from "@tessello/sdk";
 import type { Clip, Style } from "./clipboard.ts";
 import { type BuiltInType, type Diagram, type DiagramEntry, newDiagram, newId } from "./diagram.ts";
-import { type History, isPresent, record, redo as redoInHistory, startHistory, undo as undoInHistory } from "./history.ts";
+import { encodeImage } from "./encoding.ts";
+import type { Point } from "./geometry.ts";
+import { type History, isPresent, record, redo as redoInHistory, snapshotsOf, startHistory, undo as undoInHistory } from "./history.ts";
 import { t, titleOf } from "./i18n.ts";
+import { dropsImage, IMAGE_LIMIT, PLACED_BYTES, placeImage, unusedImages } from "./images.ts";
 import { type DiagramStorage, diagramStorage, reasonOf } from "./storage.ts";
+import { entryBytes } from "./usage.ts";
 
 export const diagrams = $state<{ list: DiagramEntry[]; open: Diagram | null }>({ list: [], open: null });
 
@@ -20,10 +27,17 @@ export const status = $state({
   saving: 0,
   /** Set when the last write failed: what is on screen is not saved. */
   saveError: "",
+  /** Why the last image could not be inserted, until the User closes the message or inserts another. */
+  imageError: "",
+  /** The bytes the Module stores, out of `QUOTA` (lib/usage.ts); null until they are measured. */
+  usage: null as number | null,
 });
 
-/** Select, draw an arrow, or place a shape of a type. */
-export type Tool = "select" | "arrow" | BuiltInType;
+/** The images read so far, as data URLs, by key: null for an image that is missing from the storage. */
+export const images = $state<Record<string, string | null>>({});
+
+/** Select, draw an arrow, place a shape of a type, or insert an image. */
+export type Tool = "select" | "arrow" | BuiltInType | "image";
 
 /** What the User is doing on the canvas, shared by the toolbar and the canvas. */
 export const ui = $state({
@@ -47,6 +61,8 @@ let requested: string | undefined;
 let writes = Promise.resolve();
 /** The undo history of the open diagram. */
 let history: History | null = null;
+/** The images being read from the storage. */
+const reading = new Set<string>();
 
 export function connectStore(host: ConnectedModule): void {
   storage = diagramStorage(host.storage);
@@ -66,6 +82,7 @@ export async function load(): Promise<void> {
     if (!(unsaved && id === unsaved.id)) show(id ? await storage.readDiagram(id) : null);
     status.loadError = "";
     status.loaded = true;
+    void cleanImages();
   } catch (error) {
     blockOn(error);
   }
@@ -103,8 +120,10 @@ export async function open(id: string): Promise<void> {
   try {
     show(await storage.readDiagram(id));
   } catch (error) {
-    blockOn(error);
+    return blockOn(error);
   }
+  // The history of the diagram left is gone, and the images only it kept with it.
+  return cleanImages();
 }
 
 /**
@@ -114,6 +133,7 @@ export async function open(id: string): Promise<void> {
 export function save(): Promise<void> {
   const diagram = diagrams.open;
   if (!status.loaded || !diagram) return writes;
+  const previous = history?.present;
   if (history) record(history, diagram);
   diagram.updatedAt = Date.now();
   const entry = entryOf(diagram);
@@ -122,7 +142,10 @@ export function save(): Promise<void> {
   else diagrams.list[at] = entry;
   const snapshot = $state.snapshot(diagram);
   const list = $state.snapshot(diagrams.list);
-  return enqueue(() => storage.write(snapshot, list));
+  const written = enqueue(() => storage.write(snapshot, list));
+  // A change that takes an image away may leave it unused.
+  if (previous && history && dropsImage(previous, history.present)) return cleanImages();
+  return written;
 }
 
 /** Ctrl/Cmd+Z: brings the open diagram back to before its last change, and saves it. */
@@ -141,10 +164,17 @@ function travel(move: (history: History, diagram: Diagram) => boolean): Promise<
   return save();
 }
 
+/** Runs a task of the storage after the others, so that each sees the writes before it. What it throws is returned. */
+function queue<T>(task: () => Promise<T>): Promise<T> {
+  const run = writes.then(task);
+  writes = run.catch(() => {}).then(() => void (status.usage = storage.usage()));
+  return run;
+}
+
 /** Queues a write after the others. A failure is shown to the User. */
 function enqueue(write: () => Promise<void>): Promise<void> {
   status.saving++;
-  writes = writes.then(async () => {
+  return queue(async () => {
     try {
       await write();
       status.saveError = "";
@@ -154,7 +184,65 @@ function enqueue(write: () => Promise<void>): Promise<void> {
       status.saving--;
     }
   });
-  return writes;
+}
+
+/**
+ * Reads the images the open diagram shows and that are not read yet. One that cannot be read is asked again later; one
+ * missing from the storage is null, and drawn as missing.
+ */
+export function requestImages(keys: Iterable<string>): void {
+  for (const key of keys) {
+    if (key in images || reading.has(key)) continue;
+    reading.add(key);
+    storage
+      .readImage(key)
+      .then((dataUrl) => (images[key] = dataUrl))
+      .catch(() => {})
+      .finally(() => reading.delete(key));
+  }
+}
+
+/**
+ * Inserts a picture chosen or pasted, centered on a point, with its caption: reduced and stored once, under the hash
+ * of its content. A picture that cannot be read, is too large, or would fill the storage is refused with a message,
+ * and nothing is placed.
+ */
+export async function insertImage(file: Blob, caption: string, at: Point): Promise<void> {
+  const diagram = diagrams.open;
+  if (!status.loaded || !diagram) return;
+  status.imageError = "";
+  try {
+    let image;
+    try {
+      image = await encodeImage(file);
+    } catch {
+      throw new Error(t("image_unreadable"));
+    }
+    const bytes = entryBytes(image.key, image.dataUrl);
+    if (bytes > IMAGE_LIMIT) throw new Error(t("image_too_large", { size: Math.ceil(bytes / 1024), limit: IMAGE_LIMIT / 1024 }));
+    await queue(() => storage.writeImage(image.key, image.dataUrl, PLACED_BYTES));
+    images[image.key] = image.dataUrl;
+    if (diagrams.open !== diagram) return;
+    ui.selection = placeImage(diagram, { key: image.key, size: image.size, caption, at });
+    await save();
+  } catch (error) {
+    status.imageError = (error as Error).message;
+  }
+}
+
+/**
+ * Removes the images nothing refers to: no stored diagram or custom shape, nor the open diagram, saved or not, nor a
+ * step of its history, which an undo could bring back. Measures the usage of the storage again on the way. A failure
+ * leaves the images for the next time.
+ */
+function cleanImages(): Promise<void> {
+  return queue(async () => {
+    const stored = await storage.readAll();
+    const kept = [...(history ? snapshotsOf(history) : []), JSON.stringify($state.snapshot(diagrams.open))];
+    const unused = unusedImages(stored, kept);
+    if (unused.length) await storage.removeImages(unused);
+    for (const key of unused) delete images[key];
+  }).catch(() => {});
 }
 
 /** Creates "New diagram", opens it and saves it. */
@@ -180,5 +268,6 @@ export async function remove(id: string): Promise<void> {
     show(null);
     if (diagrams.list[0]) await open(diagrams.list[0].id);
   }
-  return removed;
+  await removed;
+  return cleanImages();
 }

@@ -29,6 +29,8 @@ const en = {
   tool_postit: "Post-it (P)",
   tool_text: "Free text (T)",
   tool_arrow: "Arrow (F)",
+  tool_image: "Image (I)",
+  choose_image: "Choose an image",
   resize_corner: "Resize: fixed corner",
   resize_center: "Resize: fixed center",
   resize_corner_hint: "Resize mode: fixed corner (click for fixed center)",
@@ -45,6 +47,10 @@ const en = {
   zoom_out: "Zoom out",
   zoom_fit: "Fit",
   zoom_fit_hint: "Fit the view to the drawing",
+  storage_usage: "Storage: {usage}",
+  storage_usage_hint: "What your diagrams and their images take in the storage of the Module",
+  storage_usage_alert:
+    "The storage is almost full: delete images or diagrams you no longer need. The room of an image deleted is freed once Ctrl+Z can no longer bring it back: when you open another diagram.",
 
   canvas: "Canvas",
   type_rect: "Rectangle",
@@ -155,6 +161,12 @@ const en = {
   load_error: "Your diagrams could not be read ({reason}). Nothing can be changed until they are read, so that nothing is lost.",
   save_error: "Your last change could not be saved ({reason}). It is still on screen, but will be lost when you leave.",
   save_error_quota: "Your last change could not be saved: the storage of the Diagram Module is full. It is still on screen, but will be lost when you leave.",
+  image_unreadable: "This file could not be read as an image.",
+  image_too_large: "This image is too large: {size} KB once reduced, more than the {limit} KB an image may take. Try a smaller one.",
+  image_quota: "This image does not fit: the storage of the Diagram Module would be full. Delete images or diagrams you no longer need.",
+  image_error: "This image could not be saved ({reason}).",
+  missing_image: "missing image",
+  close: "Close",
 };
 
 type Messages = typeof en;
@@ -187,6 +199,8 @@ const fr: Messages = {
   tool_postit: "Post-it (P)",
   tool_text: "Texte libre (T)",
   tool_arrow: "Flèche (F)",
+  tool_image: "Image (I)",
+  choose_image: "Choisir une image",
   resize_corner: "Redimensionner : coin fixe",
   resize_center: "Redimensionner : centre fixe",
   resize_corner_hint: "Mode de redimensionnement : coin opposé fixe (cliquer pour centre fixe)",
@@ -203,6 +217,10 @@ const fr: Messages = {
   zoom_out: "Zoom arrière",
   zoom_fit: "Ajuster",
   zoom_fit_hint: "Ajuster la vue au dessin",
+  storage_usage: "Stockage : {usage}",
+  storage_usage_hint: "La place que vos diagrammes et leurs images prennent dans le stockage du Module",
+  storage_usage_alert:
+    "Le stockage est presque plein : supprimez les images ou les diagrammes dont vous n'avez plus besoin. La place d'une image supprimée est libérée quand Ctrl+Z ne peut plus la ramener : à l'ouverture d'un autre diagramme.",
 
   canvas: "Canevas",
   type_rect: "Rectangle",
@@ -314,6 +332,12 @@ const fr: Messages = {
   save_error: "Votre dernière modification n'a pas pu être enregistrée ({reason}). Elle reste à l'écran, mais sera perdue en quittant.",
   save_error_quota:
     "Votre dernière modification n'a pas pu être enregistrée : le stockage du Module Diagram est plein. Elle reste à l'écran, mais sera perdue en quittant.",
+  image_unreadable: "Ce fichier n'a pas pu être lu comme une image.",
+  image_too_large: "Cette image est trop lourde : {size} Ko une fois réduite, plus que les {limit} Ko qu'une image peut prendre. Essayez-en une plus petite.",
+  image_quota: "Cette image ne tient pas : le stockage du Module Diagram serait plein. Supprimez les images ou les diagrammes dont vous n'avez plus besoin.",
+  image_error: "Cette image n'a pas pu être enregistrée ({reason}).",
+  missing_image: "image manquante",
+  close: "Fermer",
 };
 
 export type MessageKey = keyof Messages;
