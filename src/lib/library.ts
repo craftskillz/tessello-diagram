@@ -109,6 +109,11 @@ export function definitionOf(libraries: readonly ShapeLibrary[], shape: Pick<Sha
   return ref && libraries.find((library) => library.id === ref.libraryId)?.shapes.find((definition) => definition.id === ref.shapeId);
 }
 
+/** The key of the picture a shape shows: that of an image, or of the definition of a custom shape, if it is still there. */
+export function pictureKeyOf(libraries: readonly ShapeLibrary[], shape: Shape): string | undefined {
+  return shape.type === "custom" ? definitionOf(libraries, shape)?.imageKey : shape.imageKey;
+}
+
 /** A shape as the geometry sees it: a custom shape has the anchors of its definition, none when it is deleted. */
 export function outlineOf(libraries: readonly ShapeLibrary[], shape: Shape): Outlined & Shape {
   if (shape.type !== "custom") return shape;

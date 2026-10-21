@@ -259,6 +259,15 @@ const en = {
   changed_yesterday: "yesterday",
   changed_days: "{count} days ago",
 
+  export_png: "PNG",
+  export_png_hint: "Download the selection, or the whole diagram when nothing is selected, as a PNG image (Ctrl/Cmd+Shift+E)",
+  export_transparent: "Transparent",
+  export_transparent_hint: "Export the PNG without a background",
+  export_drawio: "Export as drawio (.drawio)",
+  export_drawio_hint: "Download the diagram as a file that draw.io (app.diagrams.net) opens",
+  export_error: "The export failed ({reason}).",
+  drawio_rotations_dropped: "{count} text rotation(s) dropped: draw.io cannot turn a text apart from its shape.",
+
   widget_recent: "Recent diagrams",
   widget_empty: "No diagrams yet",
   widget_open: "Open",
@@ -525,6 +534,15 @@ const fr: Messages = {
   changed_hours: "il y a {count} h",
   changed_yesterday: "hier",
   changed_days: "il y a {count} jours",
+
+  export_png: "PNG",
+  export_png_hint: "Télécharger la sélection, ou tout le diagramme si rien n'est sélectionné, en image PNG (Ctrl/Cmd+Maj+E)",
+  export_transparent: "Transparent",
+  export_transparent_hint: "Exporter le PNG sans fond",
+  export_drawio: "Exporter en drawio (.drawio)",
+  export_drawio_hint: "Télécharger le diagramme dans un fichier que draw.io (app.diagrams.net) ouvre",
+  export_error: "L'export a échoué ({reason}).",
+  drawio_rotations_dropped: "{count} rotation(s) de texte perdue(s) : draw.io ne sait pas tourner un texte à part de sa forme.",
 
   widget_recent: "Diagrammes récents",
   widget_empty: "Aucun diagramme pour l'instant",

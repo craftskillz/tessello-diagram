@@ -4,6 +4,7 @@
   import { t } from "../lib/i18n.ts";
   import { diagrams, rename, save, type Tool, ui } from "../lib/store.svelte.ts";
   import DefaultsDialog from "./DefaultsDialog.svelte";
+  import { exportDrawio, exportPng } from "./exports.ts";
   import SaveStatus from "./SaveStatus.svelte";
 
   const TOOLS: { tool: Tool; label: () => string; icon: string }[] = [
@@ -69,6 +70,13 @@
     <DefaultsDialog onClose={() => (editingDefaults = false)} />
   {/if}
   <button type="button" class="dg-btn" title={t("shapes_open_hint")} onclick={() => (ui.screen = "shapes")}>{t("shapes_open")}</button>
+  <div class="dg-tools">
+    <button type="button" class="dg-btn" title={t("export_png_hint")} onclick={exportPng}>{t("export_png")}</button>
+    <button type="button" class="dg-btn" aria-pressed={ui.transparentPng} title={t("export_transparent_hint")} onclick={() => (ui.transparentPng = !ui.transparentPng)}>
+      {t("export_transparent")}
+    </button>
+    <button type="button" class="dg-btn" title={t("export_drawio_hint")} onclick={exportDrawio}>{t("export_drawio")}</button>
+  </div>
   <SaveStatus />
 </header>
 

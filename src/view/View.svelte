@@ -30,6 +30,12 @@
           <button type="button" class="dg-btn" aria-label={t("close")} title={t("close")} onclick={() => (status.imageError = "")}>×</button>
         </div>
       {/if}
+      {#if status.exportNotice}
+        <div class="dg-banner dg-notice" role="alert">
+          <p>{status.exportNotice}</p>
+          <button type="button" class="dg-btn" aria-label={t("close")} title={t("close")} onclick={() => (status.exportNotice = "")}>×</button>
+        </div>
+      {/if}
       {#if status.missingLink}
         {@const shapeId = status.missingLink}
         <div class="dg-banner dg-notice" role="alert">

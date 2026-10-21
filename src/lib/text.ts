@@ -63,6 +63,9 @@ export function layoutText(shape: Shape, measure: Measure): TextLayout {
   return { lines, x: 0, y, anchor: "middle", lineHeight };
 }
 
+/** The space between the label of an arrow and the edge of its background. */
+export const LABEL_PAD = 3;
+
 /** The lines of the label of an arrow, and the size of the box they take, around its center. */
 export interface LabelLayout {
   lines: string[];

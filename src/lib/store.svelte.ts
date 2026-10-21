@@ -37,6 +37,8 @@ export const status = $state({
   saveError: "",
   /** Why the last image could not be inserted, until the User closes the message or inserts another. */
   imageError: "",
+  /** What an export lost, or why it failed, until the User closes the message or exports again. */
+  exportNotice: "",
   /** The shape whose link leads to a diagram that no longer exists, until the User closes the message or removes the link. */
   missingLink: null as string | null,
   /** The bytes the Module stores, out of `QUOTA` (lib/usage.ts); null until they are measured. */
@@ -74,6 +76,8 @@ export const ui = $state({
   styleWithSize: false,
   /** The diagrams followed links came from, by id, the last one on top: "← Back" opens it again. */
   trail: [] as string[],
+  /** Whether "Export PNG" leaves the background out. */
+  transparentPng: false,
 });
 
 let storage: DiagramStorage;
@@ -246,6 +250,13 @@ export function requestImages(keys: Iterable<string>): void {
       .catch(() => {})
       .finally(() => reading.delete(key));
   }
+}
+
+/** The pictures of images as data URLs, by key, read from the storage when they are not read yet: null for one missing. */
+export async function readImages(keys: Iterable<string>): Promise<Record<string, string | null>> {
+  const read: Record<string, string | null> = {};
+  for (const key of new Set(keys)) read[key] = key in images ? images[key] : await queue(() => storage.readImage(key));
+  return read;
 }
 
 /**

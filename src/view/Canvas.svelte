@@ -3,24 +3,25 @@
   // finds both come from the shapes and arrows, through lib/geometry.ts and lib/arrows.ts. A gesture changes the model
   // as it goes and saves it when it ends. Shift+click on a shape follows its link, and "← Back" returns from a diagram
   // reached that way.
-  import { anchorOf, arrowAt, constrainAngle, endAt, endOf, headsOf, isDrawable, isShiftable, labelPlacement, labelPoint, layoutArrows, middlesOf, type Path, pathData, pathWithin, shiftSegment, snapWaypoint, startOf } from "../lib/arrows.ts";
+  import { anchorOf, arrowAt, constrainAngle, endAt, endOf, isDrawable, isShiftable, labelPlacement, labelPoint, layoutArrows, middlesOf, type Path, pathData, pathWithin, shiftSegment, snapWaypoint, startOf } from "../lib/arrows.ts";
   import { applyStyle, copyItems, copyStyle, pasteItems } from "../lib/clipboard.ts";
   import { createArrow, createShape } from "../lib/defaults.ts";
-  import { type Arrow, COLORS, type Diagram, keepsRatio, type ShapeLink, newId, nextZ, removeShape, type Shape, withGroups } from "../lib/diagram.ts";
+  import { type Arrow, type Diagram, keepsRatio, type ShapeLink, newId, nextZ, removeShape, type Shape, withGroups } from "../lib/diagram.ts";
   import { type Box, boxWithin, type Corner, cornersOf, cornerSign, degrees, type Endpoint, isAttached, type Point, portPoint, portsOf, resizeBox, shapeAt } from "../lib/geometry.ts";
   import { t, titleOf } from "../lib/i18n.ts";
   import { alignment, type Bounds, boundsOf, fitView, GRID, type Guide, pointsBounds, scaleBoxes, snapToGrid } from "../lib/placement.ts";
   import { captionOf } from "../lib/images.ts";
-  import { definitionOf, outlineOf, paletteOf, placeCustomShape } from "../lib/library.ts";
+  import { outlineOf, paletteOf, pictureKeyOf, placeCustomShape } from "../lib/library.ts";
   import { creation, diagrams, followLink, goBack, images, insertImage, redo, requestImages, save, shapeLibraries, type Tool, ui, undo } from "../lib/store.svelte.ts";
-  import { canvasMeasure, layoutLabel, LINE_HEIGHT } from "../lib/text.ts";
+  import { canvasMeasure, LABEL_PAD, layoutLabel, LINE_HEIGHT } from "../lib/text.ts";
   import ArrowPanel from "./ArrowPanel.svelte";
+  import ArrowView from "./ArrowView.svelte";
+  import { exportPng } from "./exports.ts";
   import ShapePanel from "./ShapePanel.svelte";
   import ShapeView from "./ShapeView.svelte";
 
   let { diagram }: { diagram: Diagram } = $props();
 
-  const HEAD = 10;
   /** On screen, in pixels, whatever the zoom: the width of the click zone of an arrow on each side of its line, the reach
    * of a port, and how far the pointer goes before a press becomes a drag. */
   const HIT = 5;
@@ -28,8 +29,6 @@
   const DRAG = 3;
   /** How near the line of its neighbor a waypoint aligns with it, on screen. */
   const SNAP = 6;
-  /** The space between a label and the edge of its background. */
-  const LABEL_PAD = 3;
   /** The narrowest a label can be made by its handle. */
   const LABEL_MIN = 20;
   const CORNERS: Corner[] = ["nw", "ne", "se", "sw"];
@@ -138,8 +137,6 @@
   function labelOf(arrow: Arrow, path: Path) {
     return { center: labelPoint(path, arrow.labelAt, arrow.labelOffset), ...layoutLabel(arrow, measure) };
   }
-  /** Whether an arrow's color is a key of the palette, drawn in its outline color, rather than a CSS color written by an older version. */
-  const isPaletteKey = (color: string) => (COLORS as readonly string[]).includes(color);
   /** The frontmost arrow whose label's box holds a point, turned with the label. */
   function labelAt(point: Point): Arrow | undefined {
     return [...diagram.arrows]
@@ -161,8 +158,7 @@
   // The images the diagram shows, its custom shapes and the palette included, are read from the storage once.
   $effect(() => {
     requestImages([
-      ...diagram.shapes.flatMap((shape) => (shape.imageKey ? [shape.imageKey] : [])),
-      ...diagram.shapes.flatMap((shape) => definitionOf(shapeLibraries.list, shape)?.imageKey ?? []),
+      ...diagram.shapes.flatMap((shape) => pictureKeyOf(shapeLibraries.list, shape) ?? []),
       ...palette.map(({ shape }) => shape.imageKey),
     ]);
   });
@@ -564,6 +560,9 @@
     } else if (ctrl && key === "a") {
       event.preventDefault();
       ui.selection = unlockedIds([...diagram.shapes.map((shape) => shape.id), ...diagram.arrows.map((arrow) => arrow.id)]);
+    } else if (ctrl && event.shiftKey && key === "e") {
+      event.preventDefault();
+      void exportPng();
     } else if (ctrl && key === "c") {
       if (!ui.selection.length) return;
       ui.clip = copyItems(diagram, ui.selection);
@@ -742,14 +741,14 @@
     <g transform="translate({pan.x} {pan.y}) scale({zoom})">
       {#each items as item (item.kind === "shape" ? item.shape.id : item.arrow.id)}
         {#if item.kind === "shape"}
-          {@const definition = item.shape.type === "custom" ? definitionOf(shapeLibraries.list, item.shape) : undefined}
+          {@const key = pictureKeyOf(shapeLibraries.list, item.shape)}
           <ShapeView
             shape={item.shape}
             label={nameOf(item.shape.id)}
             selected={ui.selection.includes(item.shape.id)}
             editing={editing?.kind === "shape" && editing.id === item.shape.id}
-            image={item.shape.imageKey ? images[item.shape.imageKey] : definition ? images[definition.imageKey] : undefined}
-            deleted={item.shape.type === "custom" && !definition}
+            image={key ? images[key] : undefined}
+            deleted={item.shape.type === "custom" && !key}
             linkTitle={linkTitle(item.shape.link)}
             {measure}
           />
@@ -757,47 +756,15 @@
           {@const arrow = item.arrow}
           {@const path = paths.get(arrow.id)}
           {#if path}
-            {@const drawn = headsOf(path, arrow.heads, HEAD + arrow.width * 2)}
-            {@const palette = isPaletteKey(arrow.color)}
-            <!-- The line of an arrow takes no pointer events: a click finds it by the distance to its path (lib/arrows.ts). -->
-            <g
-              role="img"
-              aria-label={arrowName(arrow)}
-              class="dg-arrow {palette ? arrow.color : ''}"
-              class:selected={ui.selection.includes(arrow.id)}
-              data-heads={arrow.heads}
-              data-dashed={arrow.dashed}
-              style:--arrow-color={palette ? "var(--stroke)" : arrow.color}
-            >
-              <path
-                class="dg-arrow-line"
-                d={pathData(drawn.line)}
-                stroke-width={arrow.width}
-                stroke-dasharray={arrow.dashed ? `${arrow.width * 4} ${arrow.width * 3}` : undefined}
-              />
-              {#each drawn.heads as head, index (index)}
-                <polygon class="dg-arrow-head" points={head.map((point) => `${point.x},${point.y}`).join(" ")} />
-              {/each}
-              {#if arrow.label && !(editing?.kind === "label" && editing.id === arrow.id)}
-                {@const label = labelOf(arrow, path)}
-                <!-- The label is drawn over a background, which hides the line under it; it is dragged by its box. -->
-                <g
-                  role="button"
-                  tabindex="-1"
-                  aria-label={t("label_handle")}
-                  class="dg-arrow-label"
-                  transform="translate({label.center.x} {label.center.y}) rotate({arrow.labelRotation})"
-                  onpointerdown={(event) => startLabel(event, arrow, label.center)}
-                >
-                  <rect x={-label.w / 2 - LABEL_PAD} y={-label.h / 2 - LABEL_PAD} width={label.w + LABEL_PAD * 2} height={label.h + LABEL_PAD * 2} rx="3" />
-                  <text font-size={arrow.labelSize} text-anchor="middle" dominant-baseline="central">
-                    {#each label.lines as line, index}
-                      <tspan x="0" y={(index - (label.lines.length - 1) / 2) * label.lineHeight}>{line}</tspan>
-                    {/each}
-                  </text>
-                </g>
-              {/if}
-            </g>
+            <ArrowView
+              {arrow}
+              {path}
+              label={arrowName(arrow)}
+              selected={ui.selection.includes(arrow.id)}
+              editing={editing?.kind === "label" && editing.id === arrow.id}
+              {measure}
+              onLabelPointerDown={(event, center) => startLabel(event, arrow, center)}
+            />
           {/if}
         {/if}
       {/each}
@@ -1111,35 +1078,6 @@
   svg.over-arrow {
     cursor: pointer;
   }
-  .dg-arrow {
-    pointer-events: none;
-  }
-  .dg-arrow-line {
-    fill: none;
-    stroke: var(--arrow-color);
-  }
-  .dg-arrow-head {
-    fill: var(--arrow-color);
-  }
-  /* The label is drawn over the background of the canvas, which hides the line under it, in the ink of the theme. */
-  .dg-arrow-label {
-    pointer-events: visiblePainted;
-    cursor: move;
-    outline: none;
-  }
-  .dg-arrow-label rect {
-    fill: var(--bg);
-    stroke: none;
-  }
-  .dg-arrow.selected .dg-arrow-label rect {
-    stroke: var(--accent);
-    stroke-width: 1;
-    stroke-dasharray: 3 2;
-  }
-  .dg-arrow-label text {
-    fill: var(--ink);
-    pointer-events: none;
-  }
   .dg-label-width {
     cursor: ew-resize;
   }
@@ -1165,9 +1103,6 @@
     fill: var(--accent-soft);
     stroke: var(--accent);
     pointer-events: none;
-  }
-  .dg-arrow.selected {
-    --arrow-color: var(--accent) !important;
   }
   .dg-arrow-preview {
     fill: none;

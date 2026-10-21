@@ -121,6 +121,14 @@ A shape you move snaps to the **Grid**, every 20 units; press **G** or click **G
 
 To move around the canvas, use the wheel, or drag while holding **Space** or the middle button. **Ctrl+wheel** (**Cmd+wheel** on a Mac) zooms, as do the **−** and **+** buttons at the bottom left, beside the zoom level. **Fit** shows the whole drawing.
 
+## Export
+
+**PNG**, in the toolbar, or **Ctrl+Shift+E** (**Cmd+Shift+E** on a Mac), downloads the selected shapes as an image, with the arrows between them, or the whole diagram when nothing is selected. It is drawn from the diagram itself, so what is outside the view is included, at twice its size for sharpness. Its background is that of the current theme; turn on **Transparent** to leave it out.
+
+**Export as drawio (.drawio)** downloads the whole diagram as a file that draw.io (app.diagrams.net) opens: its shapes and their text, its groups, its arrows with the points they are attached to and their waypoints, their labels, and its pictures, held in the file itself. draw.io cannot turn a text apart from its shape: such turns are dropped, and a message tells you how many.
+
+The file is named after the diagram's title. Exporting does not change the diagram.
+
 ## Your data
 
 Your diagrams and their pictures are kept in Tessello's storage on your computer, and nowhere else. The Diagram Module contacts no server. Uninstalling it deletes your diagrams.
@@ -131,4 +139,5 @@ The gauge below the list of diagrams, **Storage: x.x MB / 5 MB**, shows how much
 
 - **Save failed**: your last change is still on screen, but it is not saved and will be lost when you leave. The message tells you why; when the storage is full, delete pictures or diagrams you no longer need.
 - **Diagram not found**: the diagram a shape leads to was deleted. Click **Remove link**, or link the shape to another diagram.
+- **The export failed**: no file was downloaded. The message tells you why; try again.
 - **Your diagrams could not be read**: nothing can be changed until they are read, so that nothing is lost. Click **Try again**.
