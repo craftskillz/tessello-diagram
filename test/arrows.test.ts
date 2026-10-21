@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { contains } from "../src/lib/geometry.ts";
-import { arrowAt, constrainAngle, distanceTo, endAt, endOf, headOf, isDrawable, layoutArrows, type Path, pathWithin, pointAlong, shiftSegment, snapWaypoint, startOf } from "../src/lib/arrows.ts";
+import { arrowAt, constrainAngle, distanceTo, endAt, endOf, headOf, headsOf, isDrawable, labelPlacement, labelPoint, layoutArrows, type Path, pathWithin, pointAlong, shiftSegment, snapWaypoint, startOf } from "../src/lib/arrows.ts";
 
 const close = (actual: { x: number; y: number }, expected: { x: number; y: number }, within = 1e-9) => {
   assert.ok(Math.abs(actual.x - expected.x) < within && Math.abs(actual.y - expected.y) < within, `${JSON.stringify(actual)} ≠ ${JSON.stringify(expected)}`);
@@ -305,6 +305,13 @@ describe("the arrow under a point", () => {
   test("at equal distance, is the frontmost", () => {
     assert.equal(arrowAt(arrows, paths, { x: 50, y: -4 }, 5)?.id, "high");
   });
+
+  test("a thick arrow is found anywhere on its line as drawn, and within the reach beyond its edge", () => {
+    const thick = [{ id: "low", z: 0, width: 8 }];
+    // The line is 4 wide on each side: 9 from its middle is within 5 of its edge, 10 is not.
+    assert.equal(arrowAt(thick, paths, { x: 50, y: 9 }, 5)?.id, "low");
+    assert.equal(arrowAt(thick, paths, { x: 50, y: 10 }, 5), undefined);
+  });
 });
 
 describe("the head of an arrow", () => {
@@ -322,6 +329,38 @@ describe("the head of an arrow", () => {
     close(points[1], { x: 95, y: 90 }, 0.05);
     close(points[2], { x: 105, y: 90 }, 0.05);
     close(startOf(line), { x: 0, y: 0 });
+  });
+});
+
+describe("the heads of an arrow", () => {
+  const path: Path = { points: [{ x: 0, y: 0 }, { x: 100, y: 0 }], controls: null };
+
+  test("none: the line is the whole path", () => {
+    assert.deepEqual(headsOf(path, "none", 10), { line: path, heads: [] });
+  });
+
+  test("at the end: as the head of a path", () => {
+    assert.deepEqual(headsOf(path, "end", 10), { line: { points: [{ x: 0, y: 0 }, { x: 90, y: 0 }], controls: null }, heads: [[{ x: 100, y: 0 }, { x: 90, y: 5 }, { x: 90, y: -5 }]] });
+  });
+
+  test("at the start: its tip is on the start, and the line starts at its base", () => {
+    assert.deepEqual(headsOf(path, "start", 10), { line: { points: [{ x: 10, y: 0 }, { x: 100, y: 0 }], controls: null }, heads: [[{ x: 0, y: 0 }, { x: 10, y: -5 }, { x: 10, y: 5 }]] });
+  });
+
+  test("at both ends: the line stops at both bases", () => {
+    const { line, heads } = headsOf(path, "both", 10);
+    assert.deepEqual(line, { points: [{ x: 10, y: 0 }, { x: 90, y: 0 }], controls: null });
+    assert.equal(heads.length, 2);
+  });
+
+  test("at the start of a curve, the curve starts at its base, as long after the start, and keeps its end", () => {
+    // The curve leaves its start straight down.
+    const curve: Path = { points: [{ x: 0, y: 0 }, { x: 100, y: 100 }], controls: [[{ x: 0, y: 100 }, { x: 0, y: 100 }]] };
+    const { line, heads } = headsOf(curve, "start", 10);
+    close(heads[0][0], { x: 0, y: 0 });
+    close(startOf(line), { x: 0, y: 10 }, 0.05);
+    close(endOf(line), { x: 100, y: 100 });
+    assert.equal(line.controls!.length, 1);
   });
 });
 
@@ -357,5 +396,56 @@ describe("an arrow being drawn", () => {
     assert.equal(isDrawable({ shapeId: "a", port: null }, { shapeId: "a", port: null }), false);
     assert.equal(isDrawable({ shapeId: "a", port: "N" }, { shapeId: "a", port: null }), false);
     assert.equal(isDrawable({ shapeId: "a", port: "N" }, { shapeId: "a", port: "N" }), false);
+  });
+});
+
+describe("the label of an arrow", () => {
+  test("on a straight path, is a part of its length along it, moved aside by its offset, a quarter turn clockwise", () => {
+    const path: Path = { points: [{ x: 0, y: 0 }, { x: 200, y: 0 }], controls: null };
+    close(labelPoint(path, 0.25, 10), { x: 50, y: 10 });
+    close(labelPoint(path, 0.5, -10), { x: 100, y: -10 });
+  });
+
+  test("on a curve, follows the curve as drawn: at its middle, at its top, and aside from it across its way", () => {
+    // A symmetric arch from (0, 0) to (100, 0), whose top is at (50, −30), where it runs level.
+    const path: Path = { points: [{ x: 0, y: 0 }, { x: 100, y: 0 }], controls: [[{ x: 0, y: -40 }, { x: 100, y: -40 }]] };
+    close(labelPoint(path, 0.5, 0), { x: 50, y: -30 }, 0.05);
+    close(labelPoint(path, 0.5, -10), { x: 50, y: -40 }, 0.05);
+  });
+
+  test("on an elbow route, is on the segment its part of the length falls on, and moved aside across that segment", () => {
+    const shapes = new Map([rect("a", -200, 0), rect("b", 200, 200)].map((shape) => [shape.id, shape]));
+    const path = layoutArrows(shapes, [{ id: "1", from: { shapeId: "a", port: null }, to: { shapeId: "b", port: null }, route: "elbow" }]).get("1")!;
+    // 140 across, 200 down, 140 across: the middle is halfway down the vertical segment, which goes down.
+    assert.deepEqual(path.points, [{ x: -140, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 200 }, { x: 140, y: 200 }]);
+    close(labelPoint(path, 0.5, 10), { x: -10, y: 100 });
+    close(labelPoint(path, 0.125, 10), { x: -80, y: 10 });
+    close(labelPoint(path, 1, 0), { x: 140, y: 200 });
+  });
+
+  test("on a straight route through waypoints, is on the piece its part of the length falls on", () => {
+    const path: Path = { points: [{ x: 0, y: 0 }, { x: 0, y: -100 }, { x: 100, y: -100 }], controls: null };
+    close(labelPoint(path, 0.75, 10), { x: 50, y: -90 });
+  });
+
+  /** Whether a placement is the one expected, within `within`. */
+  const placed = (actual: { at: number; offset: number }, expected: { at: number; offset: number }, within = 1e-9) =>
+    assert.ok(Math.abs(actual.at - expected.at) < within && Math.abs(actual.offset - expected.offset) < within, `${JSON.stringify(actual)} ≠ ${JSON.stringify(expected)}`);
+
+  test("dragged to a point, takes the part of the length of the nearest point of the path, and its distance aside as offset", () => {
+    const path: Path = { points: [{ x: -140, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 200 }, { x: 140, y: 200 }], controls: null };
+    placed(labelPlacement(path, { x: -10, y: 100 }), { at: 0.5, offset: 10 });
+    placed(labelPlacement(path, { x: -80, y: -25 }), { at: 0.125, offset: -25 });
+  });
+
+  test("dragged past an end of the path, stays at that end", () => {
+    const path: Path = { points: [{ x: 0, y: 0 }, { x: 200, y: 0 }], controls: null };
+    placed(labelPlacement(path, { x: 300, y: 20 }), { at: 1, offset: 20 });
+    placed(labelPlacement(path, { x: -50, y: 0 }), { at: 0, offset: 0 });
+  });
+
+  test("dragged along a curve, is placed where it was dropped", () => {
+    const path: Path = { points: [{ x: 0, y: 0 }, { x: 100, y: 0 }], controls: [[{ x: 0, y: -40 }, { x: 100, y: -40 }]] };
+    placed(labelPlacement(path, labelPoint(path, 0.3, 15)), { at: 0.3, offset: 15 }, 0.01);
   });
 });

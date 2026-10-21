@@ -416,7 +416,7 @@ function pointsOf(path: Path): Point[] {
   return [path.points[0], ...piecesOf(path).flatMap((piece) => Array.from({ length: PIECES }, (_, index) => pieceAt(piece, (index + 1) / PIECES)))];
 }
 
-/** The point of a path a part `t` of its length along, from 0 at its start to 1 at its end: the place of its label. */
+/** The point of a path a part `t` of its length along, from 0 at its start to 1 at its end. */
 export function pointAlong(path: Path, t: number): Point {
   const points = pointsOf(path);
   const lengths = points.slice(1).map((point, index) => distance(points[index], point));
@@ -429,6 +429,41 @@ export function pointAlong(path: Path, t: number): Point {
     left -= lengths[index];
   }
   return points[0];
+}
+
+/** How far before and after a point of a path, as a part of its length, the way it goes there is taken. */
+const TANGENT = 1e-3;
+
+/**
+ * The center of the label of an arrow: a part `at` of the length of its path along, moved aside by `offset`, a quarter
+ * turn clockwise from the way the path goes there (below a path that goes right). The label thus slides with its path.
+ */
+export function labelPoint(path: Path, at: number, offset: number): Point {
+  const way = normalOf(pointAlong(path, Math.max(0, at - TANGENT)), pointAlong(path, Math.min(1, at + TANGENT)));
+  return plus(pointAlong(path, at), way, offset);
+}
+
+/**
+ * Where a label dragged to `point` goes, as `labelPoint` takes it: at the part of the length of the point of the path
+ * nearest to it, and as far aside as it is from there. Past an end, it stays at that end.
+ */
+export function labelPlacement(path: Path, point: Point): { at: number; offset: number } {
+  const points = pointsOf(path);
+  let total = 0;
+  let nearest = { distance: Infinity, length: 0, offset: 0 };
+  for (let index = 1; index < points.length; index++) {
+    const [a, b] = [points[index - 1], points[index]];
+    const length = distance(a, b);
+    const t = length === 0 ? 0 : Math.max(0, Math.min(1, ((point.x - a.x) * (b.x - a.x) + (point.y - a.y) * (b.y - a.y)) / length ** 2));
+    const on = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+    const away = distance(point, on);
+    if (away < nearest.distance) {
+      const normal = normalOf(a, b);
+      nearest = { distance: away, length: total + length * t, offset: (point.x - on.x) * normal.x + (point.y - on.y) * normal.y };
+    }
+    total += length;
+  }
+  return { at: total === 0 ? 0.5 : nearest.length / total, offset: nearest.offset };
 }
 
 /** The SVG path data of a path. */
@@ -459,15 +494,15 @@ export function distanceTo(path: Path, point: Point): number {
 }
 
 /**
- * The arrow whose path passes nearest to a point, within `reach`: at equal distance, the frontmost. The reach is given in
- * units of the drawing, so that the click zone stays the same width on screen at any zoom.
+ * The arrow whose line passes nearest to a point, within `reach` of its edge: at equal distance, the frontmost. The reach
+ * is given in units of the drawing, so that the click zone stays the same width on screen at any zoom.
  */
-export function arrowAt<A extends { id: string; z: number }>(arrows: readonly A[], paths: ReadonlyMap<string, Path>, point: Point, reach: number): A | undefined {
+export function arrowAt<A extends { id: string; z: number; width?: number }>(arrows: readonly A[], paths: ReadonlyMap<string, Path>, point: Point, reach: number): A | undefined {
   let found: { arrow: A; distance: number } | undefined;
   for (const arrow of arrows) {
     const path = paths.get(arrow.id);
     if (!path) continue;
-    const away = distanceTo(path, point);
+    const away = distanceTo(path, point) - (arrow.width ?? 0) / 2;
     if (away > reach) continue;
     if (!found || away < found.distance || (away === found.distance && arrow.z >= found.arrow.z)) found = { arrow, distance: away };
   }
@@ -505,6 +540,29 @@ export function headOf(path: Path, length: number): { line: Path; points: [Point
   const bc = lerp(b, c);
   const base = lerp(ab, bc);
   return { line: { points: [...before, base], controls: [...path.controls!.slice(0, -1), [a, ab]] }, points: arrowHead(base, last.to, length).points };
+}
+
+/** A path the other way round, from its end to its start. */
+const reversed = (path: Path): Path => ({
+  points: [...path.points].reverse(),
+  controls: path.controls && [...path.controls].reverse().map(([a, b]): [Point, Point] => [b, a]),
+});
+
+/** The heads of an arrow, `length` long, at its start, its end, both or neither, and its line, which stops at their bases. */
+export function headsOf(path: Path, heads: "none" | "start" | "end" | "both", length: number): { line: Path; heads: [Point, Point, Point][] } {
+  let line = path;
+  const drawn: [Point, Point, Point][] = [];
+  if (heads === "end" || heads === "both") {
+    const head = headOf(line, length);
+    line = head.line;
+    drawn.push(head.points);
+  }
+  if (heads === "start" || heads === "both") {
+    const head = headOf(reversed(line), length);
+    line = reversed(head.line);
+    drawn.push(head.points);
+  }
+  return { line, heads: drawn };
 }
 
 /** Whether all of a path is within a rectangle, given by its top-left corner and its size. */

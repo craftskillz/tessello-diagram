@@ -54,6 +54,25 @@ export function layoutText(shape: Shape, measure: Measure): TextLayout {
   return { lines, x: 0, y, anchor: "middle", lineHeight };
 }
 
+/** The lines of the label of an arrow, and the size of the box they take, around its center. */
+export interface LabelLayout {
+  lines: string[];
+  w: number;
+  h: number;
+  lineHeight: number;
+}
+
+/**
+ * The lines of an arrow's label: they wrap within its width when it has one, and keep their lines otherwise, the
+ * automatic width being that of the longest.
+ */
+export function layoutLabel(label: { label: string; labelSize: number; labelWidth: number | null }, measure: Measure): LabelLayout {
+  const lineHeight = label.labelSize * LINE_HEIGHT;
+  const lines = label.labelWidth ? wrap(label.label, label.labelWidth, label.labelSize, measure) : label.label.split("\n");
+  const w = label.labelWidth ?? Math.max(...lines.map((line) => measure(line, label.labelSize)));
+  return { lines, w, h: lines.length * lineHeight, lineHeight };
+}
+
 /** Measures in the font of the View, with a canvas; an estimate where there is none. */
 export function canvasMeasure(): Measure {
   const context = typeof document === "undefined" ? null : document.createElement("canvas").getContext("2d");

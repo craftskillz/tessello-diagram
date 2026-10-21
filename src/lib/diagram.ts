@@ -42,13 +42,20 @@ export const FONT_SIZES = { min: 8, max: 48 };
 /** A font size within `FONT_SIZES`, in whole units. */
 export const clampFontSize = (size: number): number => Math.min(FONT_SIZES.max, Math.max(FONT_SIZES.min, Math.round(size)));
 
+/** The widths an arrow's line can take, by steps of 0.5. */
+export const ARROW_WIDTHS = { min: 1, max: 8, step: 0.5 };
+
+/** A line width within `ARROW_WIDTHS`, on one of its steps. */
+export const clampArrowWidth = (width: number): number =>
+  Math.min(ARROW_WIDTHS.max, Math.max(ARROW_WIDTHS.min, Math.round(width / ARROW_WIDTHS.step) * ARROW_WIDTHS.step));
+
 /** Whether a shape always keeps its proportions when resized: the actor's silhouette, and the circle. */
 export const keepsRatio = (type: ShapeType): boolean => type === "actor" || type === "circle";
 
 const TEXT_ALIGNS = ["left", "center", "right"] as const;
 const TEXT_VALIGNS = ["top", "middle", "bottom"] as const;
 export const ROUTES = ["straight", "curved", "elbow"] as const;
-const HEADS = ["none", "start", "end", "both"] as const;
+export const HEADS = ["none", "start", "end", "both"] as const;
 
 export interface Shape {
   id: string;
@@ -86,8 +93,18 @@ export interface Arrow {
   heads: (typeof HEADS)[number];
   dashed: boolean;
   width: number;
+  /** A key of the palette, such as "c-blue"; a CSS color written by an older version is drawn as it is. */
   color: string;
   label: string;
+  labelSize: number;
+  /** The width the label's lines wrap within; null for its automatic width, where its lines do not wrap. */
+  labelWidth: number | null;
+  /** In degrees, clockwise. */
+  labelRotation: number;
+  /** Where the label is along the line, as a part of its length, from 0 at its start to 1 at its end. */
+  labelAt: number;
+  /** How far the label is moved aside from the line, a quarter turn clockwise from the way the line goes. */
+  labelOffset: number;
   locked: boolean;
   z: number;
 }
@@ -138,7 +155,25 @@ export function newShape(id: string, at: Point, z: number, type: ShapeType = "re
 
 /** A new arrow between two ends, with the creation values. */
 export function newArrow(id: string, from: Endpoint, to: Endpoint, z: number): Arrow {
-  return { id, from, to, route: "straight", waypoints: [], heads: "end", dashed: false, width: 2, color: "#64748b", label: "", locked: false, z };
+  return {
+    id,
+    from,
+    to,
+    route: "straight",
+    waypoints: [],
+    heads: "end",
+    dashed: false,
+    width: 2,
+    color: "c-slate",
+    label: "",
+    labelSize: 12,
+    labelWidth: null,
+    labelRotation: 0,
+    labelAt: 0.5,
+    labelOffset: 0,
+    locked: false,
+    z,
+  };
 }
 
 export function newDiagram(id: string, title: string, updatedAt: number): Diagram {
@@ -258,9 +293,14 @@ function readArrow(value: unknown): Arrow | null {
     waypoints: listOf(value.waypoints, readPoint),
     heads: oneOf(HEADS, value.heads, arrow.heads),
     dashed: value.dashed === true,
-    width: positiveOr(value.width, arrow.width),
+    width: isNumber(value.width) ? clampArrowWidth(value.width) : arrow.width,
     color: textOr(value.color, arrow.color),
     label: textOr(value.label, arrow.label),
+    labelSize: isNumber(value.labelSize) ? clampFontSize(value.labelSize) : arrow.labelSize,
+    labelWidth: isNumber(value.labelWidth) && value.labelWidth > 0 ? value.labelWidth : null,
+    labelRotation: numberOr(value.labelRotation, arrow.labelRotation),
+    labelAt: isNumber(value.labelAt) ? Math.min(1, Math.max(0, value.labelAt)) : arrow.labelAt,
+    labelOffset: numberOr(value.labelOffset, arrow.labelOffset),
     locked: value.locked === true,
   };
 }

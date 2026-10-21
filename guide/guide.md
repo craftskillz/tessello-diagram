@@ -46,6 +46,14 @@ A selected arrow shows a small square in the middle of each segment. Drag it to 
 
 Waypoints stay where you put them when you move a shape: only the segments at the ends of the arrow follow it.
 
+### Style and label
+
+The panel of the selected arrows styles them all at once: their arrowheads (none, at the start, at the end or at both ends), a **Solid** or **Dashed** line, its width, from 1 to 8 by steps of 0.5, and its color.
+
+Double-click an arrow or its label, or click **Edit arrow label**, to write its label. **Enter** applies it, **Shift+Enter** adds a line, **Escape** abandons it. The label sits on a background that hides the line under it.
+
+Drag the label to slide it along the arrow, or away from it on either side: it keeps its place on the arrow when the arrow moves. On a selected arrow, the small handle on the right edge of the label sets the width its lines wrap within. The panel sets the size of its text, from 8 to 48, and turns it by steps of 15°. **Reset label** brings it back to the middle of the arrow, at its automatic width.
+
 ## Resizing, turning and styling
 
 Drag a corner of the selected shape to resize it. Hold **Shift** to keep its proportions; an actor and a circle always keep them. The button at the top chooses whether the opposite corner or the center stays in place.

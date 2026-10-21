@@ -60,8 +60,13 @@ describe("reading a stored diagram", () => {
           heads: "end",
           dashed: false,
           width: 2,
-          color: "#64748b",
-          label: "",
+          color: "c-blue",
+          label: "calls",
+          labelSize: 14,
+          labelWidth: 80,
+          labelRotation: -15,
+          labelAt: 0.3,
+          labelOffset: -12,
           locked: false,
           z: 1,
         },
@@ -124,6 +129,32 @@ describe("reading a stored diagram", () => {
   test("a text size out of 8–48 is brought back within it", () => {
     const [big, small] = readDiagram({ shapes: [{ id: "s1", x: 0, y: 0, fontSize: 200 }, { id: "s2", x: 0, y: 0, fontSize: 2 }] }, "d1").shapes;
     assert.deepEqual([big.fontSize, small.fontSize], [48, 8]);
+  });
+
+  test("an arrow takes its creation style and a label in the middle of its line, at its automatic width, where they are missing", () => {
+    const [arrow] = readDiagram({ arrows: [{ id: "a1", from: { x: 0, y: 0 }, to: { x: 100, y: 0 } }] }, "d1").arrows;
+    assert.deepEqual(
+      { heads: arrow.heads, dashed: arrow.dashed, width: arrow.width, color: arrow.color, labelSize: arrow.labelSize, labelWidth: arrow.labelWidth, labelRotation: arrow.labelRotation, labelAt: arrow.labelAt, labelOffset: arrow.labelOffset },
+      { heads: "end", dashed: false, width: 2, color: "c-slate", labelSize: 12, labelWidth: null, labelRotation: 0, labelAt: 0.5, labelOffset: 0 },
+    );
+  });
+
+  test("brings the style of an arrow back within its bounds: width 1–8 by steps of 0.5, label size 8–48, label along its line", () => {
+    const ends = { from: { x: 0, y: 0 }, to: { x: 100, y: 0 } };
+    const [thick, thin, odd] = readDiagram(
+      {
+        arrows: [
+          { id: "a1", ...ends, width: 20, labelSize: 100, labelAt: 3, labelWidth: -4 },
+          { id: "a2", ...ends, width: 0.2, labelSize: 1, labelAt: -1 },
+          { id: "a3", ...ends, width: 2.3, labelWidth: "wide", labelRotation: "up" },
+        ],
+      },
+      "d1",
+    ).arrows;
+    assert.deepEqual([thick.width, thin.width, odd.width], [8, 1, 2.5]);
+    assert.deepEqual([thick.labelSize, thin.labelSize], [48, 8]);
+    assert.deepEqual([thick.labelAt, thin.labelAt], [1, 0]);
+    assert.deepEqual([thick.labelWidth, odd.labelWidth, odd.labelRotation], [null, null, 0]);
   });
 
   test("a value that is not a diagram is an empty diagram", () => {
