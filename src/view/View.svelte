@@ -1,6 +1,6 @@
 <script lang="ts">
   import { t } from "../lib/i18n.ts";
-  import { diagrams, load, status, ui } from "../lib/store.svelte.ts";
+  import { diagrams, load, removeLink, status, ui } from "../lib/store.svelte.ts";
   import Canvas from "./Canvas.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import ShapeEditor from "./ShapeEditor.svelte";
@@ -28,6 +28,14 @@
         <div class="dg-banner dg-notice" role="alert">
           <p>{status.imageError}</p>
           <button type="button" class="dg-btn" aria-label={t("close")} title={t("close")} onclick={() => (status.imageError = "")}>×</button>
+        </div>
+      {/if}
+      {#if status.missingLink}
+        {@const shapeId = status.missingLink}
+        <div class="dg-banner dg-notice" role="alert">
+          <p>{t("link_not_found_msg")}</p>
+          <button type="button" class="dg-btn" onclick={() => removeLink(shapeId)}>{t("link_remove")}</button>
+          <button type="button" class="dg-btn" aria-label={t("close")} title={t("close")} onclick={() => (status.missingLink = null)}>×</button>
         </div>
       {/if}
       {#if diagrams.open}

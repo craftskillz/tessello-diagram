@@ -1,16 +1,17 @@
 <script lang="ts">
   // The canvas of the open diagram, drawn in SVG from its model alone (lib/diagram.ts): what is drawn and what a click
   // finds both come from the shapes and arrows, through lib/geometry.ts and lib/arrows.ts. A gesture changes the model
-  // as it goes and saves it when it ends.
+  // as it goes and saves it when it ends. Shift+click on a shape follows its link, and "← Back" returns from a diagram
+  // reached that way.
   import { anchorOf, arrowAt, constrainAngle, endAt, endOf, headsOf, isDrawable, isShiftable, labelPlacement, labelPoint, layoutArrows, middlesOf, type Path, pathData, pathWithin, shiftSegment, snapWaypoint, startOf } from "../lib/arrows.ts";
   import { applyStyle, copyItems, copyStyle, pasteItems } from "../lib/clipboard.ts";
-  import { type Arrow, COLORS, type Diagram, keepsRatio, newArrow, newId, newShape, nextZ, removeShape, type Shape, withGroups } from "../lib/diagram.ts";
+  import { type Arrow, COLORS, type Diagram, keepsRatio, type ShapeLink, newArrow, newId, newShape, nextZ, removeShape, type Shape, withGroups } from "../lib/diagram.ts";
   import { type Box, boxWithin, type Corner, cornersOf, cornerSign, degrees, type Endpoint, isAttached, type Point, portPoint, portsOf, resizeBox, shapeAt } from "../lib/geometry.ts";
-  import { t } from "../lib/i18n.ts";
+  import { t, titleOf } from "../lib/i18n.ts";
   import { alignment, type Bounds, boundsOf, fitView, GRID, type Guide, pointsBounds, scaleBoxes, snapToGrid } from "../lib/placement.ts";
   import { captionOf } from "../lib/images.ts";
   import { definitionOf, outlineOf, paletteOf, placeCustomShape } from "../lib/library.ts";
-  import { images, insertImage, redo, requestImages, save, shapeLibraries, type Tool, ui, undo } from "../lib/store.svelte.ts";
+  import { diagrams, followLink, goBack, images, insertImage, redo, requestImages, save, shapeLibraries, type Tool, ui, undo } from "../lib/store.svelte.ts";
   import { canvasMeasure, layoutLabel, LINE_HEIGHT } from "../lib/text.ts";
   import ArrowPanel from "./ArrowPanel.svelte";
   import ShapePanel from "./ShapePanel.svelte";
@@ -202,6 +203,12 @@
     }
     // Near its line, an arrow wins over a shape under it.
     const item = arrowAt(diagram.arrows, paths, at, reach(HIT)) ?? shapeAt(diagram.shapes, at);
+    // Shift+click follows the link of a shape, locked or not.
+    const link = item && event.shiftKey && !ctrl ? shapes.get(item.id)?.link : null;
+    if (item && link) {
+      event.preventDefault();
+      return follow(item.id, link);
+    }
     if (!item) {
       if (!ctrl) ui.selection = [];
       // With the Select tool, a drag on the empty canvas draws a selection rectangle.
@@ -226,6 +233,29 @@
       .map(({ id, from, to, waypoints }) => ({ id, from: { ...(from as Point) }, to: { ...(to as Point) }, waypoints: waypoints.map((point) => ({ ...point })) }));
     capture(event, { kind: "move", id: item.id, from: at, starts, lines, moved: false });
   }
+
+  /**
+   * A page opens in a new tab, as a link of the page would (CONVENTION.md §4), and another diagram opens in the View.
+   * The press is a gesture of the User, which lets the browser open the tab.
+   */
+  function follow(shapeId: string, link: ShapeLink) {
+    if (link.type === "diagram") return void followLink(shapeId, link.value);
+    Object.assign(document.createElement("a"), { href: link.value, target: "_blank", rel: "noopener noreferrer" }).click();
+  }
+
+  /** What the link of a shape leads to, in words. */
+  function linkTitle(link: ShapeLink | null): string | undefined {
+    if (!link) return undefined;
+    if (link.type === "url") return t("link_badge_url", { url: link.value });
+    const entry = diagrams.list.find((entry) => entry.id === link.value);
+    return entry ? t("link_badge_diagram", { title: titleOf(entry.title) }) : t("link_not_found");
+  }
+
+  /** The diagram "← Back" returns to, if a link was followed to this one. */
+  const backTo = $derived.by(() => {
+    const id = ui.trail.at(-1);
+    return id ? diagrams.list.find((entry) => entry.id === id) : undefined;
+  });
 
   function onPointerMove(event: PointerEvent) {
     // Off the canvas, no port is shown, unless a gesture goes on.
@@ -719,6 +749,7 @@
             editing={editing?.kind === "shape" && editing.id === item.shape.id}
             image={item.shape.imageKey ? images[item.shape.imageKey] : definition ? images[definition.imageKey] : undefined}
             deleted={item.shape.type === "custom" && !definition}
+            linkTitle={linkTitle(item.shape.link)}
             {measure}
           />
         {:else}
@@ -1024,6 +1055,10 @@
     </div>
   {/if}
 
+  {#if backTo}
+    <button type="button" class="dg-btn dg-back" onclick={goBack}>{t("link_back", { title: titleOf(backTo.title) })}</button>
+  {/if}
+
   <div class="dg-zoom" role="group" aria-label={t("zoom")}>
     <button type="button" class="dg-btn" aria-label={t("zoom_out")} title={t("zoom_out")} onclick={() => zoomTo(zoom / ZOOM.step)}>−</button>
     <output aria-label={t("zoom")}>{Math.round(zoom * 100)}%</output>
@@ -1056,6 +1091,12 @@
     background: var(--bg);
     user-select: none;
     touch-action: none;
+  }
+  .dg-back {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    box-shadow: var(--shadow);
   }
   svg.tool-shape {
     cursor: crosshair;

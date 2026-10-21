@@ -1,10 +1,10 @@
 <script lang="ts">
-  // The list of diagrams: open one, create one, or delete one after a confirmation. Below it, how much of the storage
-  // the Module uses, which alerts past `ALERT` of it.
+  // The list of diagrams: open one, which forgets the links followed, create one, or delete one after a confirmation.
+  // Below it, how much of the storage the Module uses, which alerts past `ALERT` of it.
   import { ask } from "../lib/confirmation.svelte.ts";
   import type { DiagramEntry } from "../lib/diagram.ts";
   import { t, titleOf } from "../lib/i18n.ts";
-  import { create, diagrams, open, remove, status } from "../lib/store.svelte.ts";
+  import { create, diagrams, openFromList, remove, status } from "../lib/store.svelte.ts";
   import { ALERT, QUOTA, usageText } from "../lib/usage.ts";
 
   async function confirmRemove(entry: DiagramEntry) {
@@ -23,7 +23,7 @@
     <ul>
       {#each diagrams.list as entry (entry.id)}
         <li class:active={entry.id === diagrams.open?.id}>
-          <button type="button" class="dg-open" aria-current={entry.id === diagrams.open?.id ? "page" : undefined} onclick={() => open(entry.id)}>
+          <button type="button" class="dg-open" aria-current={entry.id === diagrams.open?.id ? "page" : undefined} onclick={() => openFromList(entry.id)}>
             {titleOf(entry.title)}
           </button>
           <button type="button" class="dg-delete" aria-label={t("delete_diagram", { title: titleOf(entry.title) })} title={t("delete")} onclick={() => confirmRemove(entry)}>

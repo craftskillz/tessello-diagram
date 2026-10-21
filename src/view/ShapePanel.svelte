@@ -1,11 +1,12 @@
 <script lang="ts">
   // The style of the selected shapes: color, opacity of the fill, text size and alignments, rotation of the shape and
-  // of its text, and order; their group, their lock, and the copy of a style. A control applies to every selected shape,
-  // and a change is saved when it is made. The panel is docked beside the canvas, so that it never hides the drawing.
+  // of its text, and order; their group, their lock, and the copy of a style; the link of a single shape. A control
+  // applies to every selected shape, and a change is saved when it is made. The panel is docked beside the canvas, so that it never hides the drawing.
   import { clampFontSize, COLORS, FONT_SIZES, groupShapes, LABEL_PLACEMENTS, type LabelPlacement, reorder, type Shape, ungroupShapes } from "../lib/diagram.ts";
   import { degrees } from "../lib/geometry.ts";
   import { t } from "../lib/i18n.ts";
   import { diagrams, save, ui } from "../lib/store.svelte.ts";
+  import LinkDialog from "./LinkDialog.svelte";
   import SelectionActions from "./SelectionActions.svelte";
 
   let {
@@ -15,6 +16,9 @@
     onCopyStyle,
     onPasteStyle,
   }: { shapes: Shape[]; onEditText: (id: string) => void; onLock: () => void; onCopyStyle: () => void; onPasteStyle: () => void } = $props();
+
+  /** Whether "Link on this shape" is open, for the one selected shape. */
+  let linking = $state(false);
 
   /** The first selected shape: the panel shows its values where the selection does not share one. */
   const first = $derived(shapes[0]);
@@ -153,6 +157,10 @@
 
     {#if shapes.length === 1}
       <button type="button" class="dg-btn" onclick={() => onEditText(first.id)}>{t("edit_text")}</button>
+      <button type="button" class="dg-btn" title={t("link_open_hint")} onclick={() => (linking = true)}>{t("link_open")}</button>
+      {#if linking}
+        <LinkDialog shape={first} onClose={() => (linking = false)} />
+      {/if}
     {/if}
 
     <div class="dg-row">

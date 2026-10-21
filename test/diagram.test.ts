@@ -126,6 +126,20 @@ describe("reading a stored diagram", () => {
     assert.equal(shape.locked, false);
   });
 
+  test("a shape keeps its link to a URL or to another diagram, and a link that cannot be read is no link", () => {
+    const links = [{ type: "url", value: "https://example.com/doc" }, { type: "diagram", value: "d2" }, { type: "url", value: "mailto:team@example.com" }];
+    const read = (link: unknown) => readDiagram({ shapes: [{ id: "s1", x: 0, y: 0, link }] }, "d1").shapes[0].link;
+    for (const link of links) assert.deepEqual(read(link), link);
+    for (const link of [null, "https://example.com", { type: "page", value: "x" }, { type: "diagram" }, { type: "url", value: " " }]) assert.equal(read(link), null);
+  });
+
+  test("a stored URL link without http(s), mailto or tel gets https://, so that a link never runs a script", () => {
+    const read = (value: string) => readDiagram({ shapes: [{ id: "s1", x: 0, y: 0, link: { type: "url", value } }] }, "d1").shapes[0].link;
+    assert.deepEqual(read("example.com"), { type: "url", value: "https://example.com" });
+    assert.deepEqual(read("javascript:alert(1)"), { type: "url", value: "https://javascript:alert(1)" });
+    assert.deepEqual(read("tel:+33100000000"), { type: "url", value: "tel:+33100000000" });
+  });
+
   test("a text size out of 8–48 is brought back within it", () => {
     const [big, small] = readDiagram({ shapes: [{ id: "s1", x: 0, y: 0, fontSize: 200 }, { id: "s2", x: 0, y: 0, fontSize: 2 }] }, "d1").shapes;
     assert.deepEqual([big.fontSize, small.fontSize], [48, 8]);

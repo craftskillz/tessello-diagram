@@ -67,6 +67,18 @@ export interface CustomShapeRef {
 }
 export const HEADS = ["none", "start", "end", "both"] as const;
 
+/** Where a shape leads, followed by Shift+click: a page opened in a new tab, or another diagram, by its id. */
+export type ShapeLink = { type: "url"; value: string } | { type: "diagram"; value: string };
+
+/**
+ * The URL a link opens. Without a scheme, a URL would be resolved against the document of the View, a srcdoc, and lead
+ * nowhere: it gets `https://`. Only `http(s)://`, `mailto:` and `tel:` are kept as they are, so a link never runs a script.
+ */
+export function withScheme(url: string): string {
+  if (/^https?:\/\//i.test(url) || /^(mailto|tel):/i.test(url)) return url;
+  return `https://${url.replace(/^\/\//, "")}`;
+}
+
 export interface Shape {
   id: string;
   type: ShapeType;
@@ -89,7 +101,7 @@ export interface Shape {
   opacity: number;
   groupId: string | null;
   locked: boolean;
-  link: string | null;
+  link: ShapeLink | null;
   /** The drawing order: higher is in front. */
   z: number;
   /** An image: the key of its picture in the storage, `image:<sha256>` (images.ts). */
@@ -313,7 +325,7 @@ function readShape(value: unknown): Shape | null {
     opacity: isNumber(value.opacity) && value.opacity >= 0 && value.opacity <= 1 ? value.opacity : shape.opacity,
     groupId: isText(value.groupId) ? value.groupId : null,
     locked: value.locked === true,
-    link: isText(value.link) ? value.link : null,
+    link: readLink(value.link),
     ...(shape.type === "image" && isText(value.imageKey) ? { imageKey: value.imageKey } : {}),
     ...(shape.type === "custom" ? readCustom(value) : {}),
   };
@@ -326,6 +338,13 @@ function readCustom(value: StoredFields): Pick<Shape, "customShapeRef" | "labelP
     customShapeRef: { libraryId: textOr(ref.libraryId, ""), shapeId: textOr(ref.shapeId, ""), name: textOr(ref.name, "") },
     labelPlacement: oneOf(LABEL_PLACEMENTS, value.labelPlacement, "below"),
   };
+}
+
+function readLink(value: unknown): ShapeLink | null {
+  if (!isRecord(value) || !isText(value.value) || !value.value.trim()) return null;
+  if (value.type === "url") return { type: "url", value: withScheme(value.value.trim()) };
+  if (value.type === "diagram") return { type: "diagram", value: value.value };
+  return null;
 }
 
 function readEndpoint(value: unknown): Endpoint | null {

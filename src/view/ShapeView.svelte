@@ -3,7 +3,8 @@
   // silhouette, and the free text no outline. Its colors come from its palette key (base.css), in the light or dark
   // variant; the opacity is that of its fill only, so that its outline and text stay readable. An image shows its
   // picture, read from the storage, or a "missing image" frame when the storage no longer has it. A custom shape shows
-  // the picture of its definition, or a dashed frame with its name when its definition is deleted.
+  // the picture of its definition, or a dashed frame with its name when its definition is deleted. A shape with a link
+  // shows a chain at its bottom right corner, in the blue of the palette for a page, and its orange for a diagram.
   import type { Shape } from "../lib/diagram.ts";
   import { lidOf } from "../lib/geometry.ts";
   import { t } from "../lib/i18n.ts";
@@ -16,6 +17,7 @@
     editing,
     image,
     deleted = false,
+    linkTitle,
     measure,
   }: {
     shape: Shape;
@@ -26,6 +28,8 @@
     image?: string | null;
     /** A custom shape whose definition is deleted. */
     deleted?: boolean;
+    /** What the link of the shape leads to, said by its chain. */
+    linkTitle?: string;
     measure: Measure;
   } = $props();
 
@@ -93,6 +97,13 @@
   {:else}
     <rect class="dg-body" x={-w / 2} y={-h / 2} width={w} height={h} rx="6" fill-opacity={shape.opacity} />
   {/if}
+  {#if shape.link}
+    <g class="dg-link {shape.link.type === 'url' ? 'c-blue' : 'c-orange'}" data-link={shape.link.type} transform="translate({w / 2 - 2} {h / 2 - 2})">
+      <title>{linkTitle}</title>
+      <circle r="8" />
+      <path d="M-3.5 1.5l-1 1a2.1 2.1 0 0 0 3 3l1.5-1.5M3.5-1.5l1-1a2.1 2.1 0 0 0-3-3L0-4M-2 2l4-4" />
+    </g>
+  {/if}
   {#if !editing && shape.text}
     <text font-size={shape.fontSize} text-anchor={text.anchor} dominant-baseline="central" transform="rotate({shape.textRotation})">
       {#each text.lines as line, index}
@@ -152,5 +163,16 @@
   }
   .selected .dg-frame {
     stroke: var(--accent);
+  }
+  .dg-link circle {
+    fill: var(--stroke);
+    stroke: var(--bg);
+    stroke-width: 1.5;
+  }
+  .dg-link path {
+    fill: none;
+    stroke: var(--bg);
+    stroke-width: 1.5;
+    stroke-linecap: round;
   }
 </style>

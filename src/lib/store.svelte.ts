@@ -7,6 +7,8 @@
 // a change that takes an image away.
 // The libraries of custom shapes (lib/library.ts) are read with the diagrams, and saved as each change is made in the
 // shape editor, with the same indicator; they are not part of the undo history of a diagram.
+// Following a link to another diagram keeps the diagrams it came from, which "← Back" opens again; opening a diagram
+// from the list starts over.
 
 import type { ConnectedModule } from "@tessello/sdk";
 import type { Clip, Style } from "./clipboard.ts";
@@ -32,6 +34,8 @@ export const status = $state({
   saveError: "",
   /** Why the last image could not be inserted, until the User closes the message or inserts another. */
   imageError: "",
+  /** The shape whose link leads to a diagram that no longer exists, until the User closes the message or removes the link. */
+  missingLink: null as string | null,
   /** The bytes the Module stores, out of `QUOTA` (lib/usage.ts); null until they are measured. */
   usage: null as number | null,
 });
@@ -62,6 +66,8 @@ export const ui = $state({
   /** What "Copy style" copied, and whether it copies the size of a shape too. */
   style: null as Style | null,
   styleWithSize: false,
+  /** The diagrams followed links came from, by id, the last one on top: "← Back" opens it again. */
+  trail: [] as string[],
 });
 
 let storage: DiagramStorage;
@@ -130,11 +136,13 @@ const mostRecent = () => diagrams.list.reduce<DiagramEntry | undefined>((best, e
 export function applyParams(params: Record<string, string> = {}): void {
   if (!params.id) return;
   requested = params.id;
+  ui.trail = [];
   if (status.loaded) void load();
 }
 
 export async function open(id: string): Promise<void> {
   if (id === diagrams.open?.id) return;
+  status.missingLink = null;
   try {
     show(await storage.readDiagram(id));
   } catch (error) {
@@ -271,9 +279,69 @@ function cleanImages(): Promise<void> {
   }).catch(() => {});
 }
 
-/** Creates "New diagram", opens it and saves it. */
+/** Opens a diagram chosen in the list: the way back of the links followed starts over. */
+export function openFromList(id: string): Promise<void> {
+  ui.trail = [];
+  return open(id);
+}
+
+/** Creates "New diagram", opens it and saves it. The way back of the links followed starts over. */
 export function create(): Promise<void> {
+  ui.trail = [];
+  status.missingLink = null;
   show(newDiagram(newId("diagram"), t("new_diagram"), Date.now()));
+  return save();
+}
+
+/**
+ * Creates an empty diagram with a title, without opening it, for a link to lead to; resolves with its id. A diagram
+ * that cannot be written is taken out of the list, and the message of the error thrown tells the User why.
+ */
+export async function createLinked(title: string): Promise<string> {
+  const diagram = newDiagram(newId("diagram"), titleOf(title), Date.now());
+  diagrams.list.push(entryOf(diagram));
+  const list = $state.snapshot(diagrams.list);
+  try {
+    await queue(() => storage.write(diagram, list));
+  } catch (error) {
+    diagrams.list = diagrams.list.filter((entry) => entry.id !== diagram.id);
+    throw error;
+  }
+  return diagram.id;
+}
+
+/**
+ * Follows the link of a shape to a diagram, which opens with the one it came from kept for "← Back". A diagram that no
+ * longer exists opens nothing: the User is told, and can remove the link.
+ */
+export async function followLink(shapeId: string, target: string): Promise<void> {
+  const from = diagrams.open;
+  if (!from || target === from.id) return;
+  if (!diagrams.list.some((entry) => entry.id === target)) {
+    status.missingLink = shapeId;
+    return;
+  }
+  ui.selection = [];
+  await open(target);
+  // "← Back" shows with the diagram reached, not before.
+  if (diagrams.open?.id === target) ui.trail = [...ui.trail, from.id];
+}
+
+/** "← Back": opens again the diagram the last link followed came from. */
+export async function goBack(): Promise<void> {
+  const id = ui.trail.at(-1);
+  if (!id) return;
+  ui.selection = [];
+  await open(id);
+  if (diagrams.open?.id === id) ui.trail = ui.trail.slice(0, -1);
+}
+
+/** Removes the link of a shape of the open diagram, and saves it. */
+export function removeLink(shapeId: string): Promise<void> {
+  status.missingLink = null;
+  const shape = diagrams.open?.shapes.find((shape) => shape.id === shapeId);
+  if (!shape) return writes;
+  shape.link = null;
   return save();
 }
 
@@ -288,9 +356,12 @@ export function rename(title: string): Promise<void> {
 export async function remove(id: string): Promise<void> {
   if (!status.loaded) return;
   diagrams.list = diagrams.list.filter((entry) => entry.id !== id);
+  ui.trail = ui.trail.filter((origin) => origin !== id);
   const list = $state.snapshot(diagrams.list);
   const removed = enqueue(() => storage.remove(id, list));
   if (diagrams.open?.id === id) {
+    // The diagram that opens instead is taken from the list: the way back starts over.
+    ui.trail = [];
     show(null);
     if (diagrams.list[0]) await open(diagrams.list[0].id);
   }

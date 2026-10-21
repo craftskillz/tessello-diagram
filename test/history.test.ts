@@ -18,7 +18,7 @@ function rich(): Diagram {
   const diagram = { ...newDiagram("d2", "Payments", 1234), grid: true, guides: true };
   diagram.shapes = [
     { ...newShape("api", { x: 0, y: 0 }, 0), text: "API", groupId: "g1" },
-    { ...newShape("db", { x: 200, y: 0 }, 1, "database"), color: "c-teal", opacity: 0.8, groupId: "g1", locked: true, link: "https://example.com" },
+    { ...newShape("db", { x: 200, y: 0 }, 1, "database"), color: "c-teal", opacity: 0.8, groupId: "g1", locked: true, link: { type: "url", value: "https://example.com" } },
     ...(["ellipse", "circle", "actor", "postit", "text", "image", "custom"] as const).map((type, index) => newShape(type, { x: index * 100, y: 300 }, 4 + index, type)),
   ];
   diagram.arrows = [

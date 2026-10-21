@@ -97,6 +97,16 @@ The shapes ticked **Show in diagram palette** appear at the bottom of the canvas
 
 **Delete shape** asks first, and tells you how many diagrams use it. There, it then shows as a dashed frame with its name, and its arrows stay attached.
 
+## Links
+
+A shape can lead to a web page or to another diagram. Select it alone and click **Link…** in its panel, then choose:
+
+- **External URL**: type the address; without `http://`, `https://`, `mailto:` or `tel:`, `https://` is added. Leave it empty to remove the link;
+- **Existing diagram**: choose it in the list, which does not offer the diagram you are in;
+- **New diagram**: type its title, which is required. The diagram is created empty.
+
+A linked shape shows a chain at its bottom right corner, blue for a page and orange for a diagram. **Shift+click** it to follow the link, with any tool but the Arrow: a page opens in a new tab, and a diagram opens in its place. **← Back to "…"**, at the top left of the canvas, returns to the diagram you came from, one link at a time; opening a diagram from the list forgets the way back. **Remove link**, in the same panel, takes the link away. A link is saved like any other change, and **Ctrl+Z** undoes it.
+
 ## Grid, guides and zoom
 
 A shape you move snaps to the **Grid**, every 20 units; press **G** or click **Grid (G)** to turn it off or on. While you move a shape, **Guides** line it up with the edges and centers of the other shapes, and show the line it follows; they win over the grid. Both are on in a new diagram, and each diagram keeps its own choice.
@@ -112,4 +122,5 @@ The gauge below the list of diagrams, **Storage: x.x MB / 5 MB**, shows how much
 ## When something goes wrong
 
 - **Save failed**: your last change is still on screen, but it is not saved and will be lost when you leave. The message tells you why; when the storage is full, delete pictures or diagrams you no longer need.
+- **Diagram not found**: the diagram a shape leads to was deleted. Click **Remove link**, or link the shape to another diagram.
 - **Your diagrams could not be read**: nothing can be changed until they are read, so that nothing is lost. Click **Try again**.
