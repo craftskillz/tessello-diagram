@@ -3,6 +3,7 @@
 // (CONVENTION.md §4). Diagrams that could not be read cannot be changed, so that an empty screen never overwrites them.
 
 import type { ConnectedModule } from "@tessello/sdk";
+import type { Clip, Style } from "./clipboard.ts";
 import { type BuiltInType, type Diagram, type DiagramEntry, newDiagram, newId } from "./diagram.ts";
 import { t, titleOf } from "./i18n.ts";
 import { type DiagramStorage, diagramStorage, reasonOf } from "./storage.ts";
@@ -29,6 +30,12 @@ export const ui = $state({
   selection: [] as string[],
   /** Resizing keeps the center of the shape where it is, rather than its opposite corner. */
   resizeFromCenter: false,
+  /** What Ctrl/Cmd+C copied, and how many times it was pasted since: each paste lands 40 units further. */
+  clip: null as Clip | null,
+  pastes: 0,
+  /** What "Copy style" copied, and whether it copies the size of a shape too. */
+  style: null as Style | null,
+  styleWithSize: false,
 });
 
 let storage: DiagramStorage;

@@ -2,14 +2,21 @@
   // The selected arrows: their heads, solid or dashed line, width and color; their route, straight, curved or elbow,
   // "Reset route", which removes their waypoints, and "Detach ends", which makes their ends attached to a port automatic;
   // and their label, its size, its rotation, and "Reset label", which brings it back to the middle of the line at its
-  // automatic width. A control applies to every selected arrow. The panel is docked beside the canvas, as the panel of
-  // the shapes.
+  // automatic width; their lock, and the copy of a style. A control applies to every selected arrow. The panel is docked
+  // beside the canvas, as the panel of the shapes.
   import { ARROW_WIDTHS, type Arrow, clampArrowWidth, clampFontSize, COLORS, detachEnds, FONT_SIZES, HEADS, ROUTES } from "../lib/diagram.ts";
   import { degrees, isAttached } from "../lib/geometry.ts";
   import { t } from "../lib/i18n.ts";
-  import { save } from "../lib/store.svelte.ts";
+  import { save, ui } from "../lib/store.svelte.ts";
+  import SelectionActions from "./SelectionActions.svelte";
 
-  let { arrows, onEditLabel }: { arrows: Arrow[]; onEditLabel: (id: string) => void } = $props();
+  let {
+    arrows,
+    onEditLabel,
+    onLock,
+    onCopyStyle,
+    onPasteStyle,
+  }: { arrows: Arrow[]; onEditLabel: (id: string) => void; onLock: () => void; onCopyStyle: () => void; onPasteStyle: () => void } = $props();
 
   const onPorts = $derived(arrows.some((arrow) => [arrow.from, arrow.to].some((end) => isAttached(end) && end.port)));
   const withWaypoints = $derived(arrows.some((arrow) => arrow.waypoints.length));
@@ -111,6 +118,7 @@
     title={t("reset_label_hint")}
     onclick={() => apply((arrow) => Object.assign(arrow, { labelAt: 0.5, labelOffset: 0, labelWidth: null }))}>{t("reset_label")}</button
   >
+  <SelectionActions {onLock} {onCopyStyle} {onPasteStyle} canPaste={ui.style?.kind === "arrow"} />
 </aside>
 
 <style>

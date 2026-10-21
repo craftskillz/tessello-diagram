@@ -212,14 +212,17 @@ export function resizeBox(box: Box, corner: Corner, delta: Point, mode: { keepRa
   return { ...box, x: box.x + center.x, y: box.y + center.y, w, h };
 }
 
-/** Whether the whole box of a shape, turned, is within a rectangle given by its top-left corner and its size. */
-export function boxWithin(box: Box, rectangle: { x: number; y: number; w: number; h: number }): boolean {
-  return (["nw", "ne", "se", "sw"] as const).every((corner) => {
+/** The four corners of a box, turned with it. */
+export function cornersOf(box: Box): Point[] {
+  return (["nw", "ne", "se", "sw"] as const).map((corner) => {
     const sign = cornerSign(corner);
     const at = rotate({ x: (sign.x * box.w) / 2, y: (sign.y * box.h) / 2 }, box.rotation);
-    const x = box.x + at.x;
-    const y = box.y + at.y;
-    // Within a hair: a corner turned by 90° lands a rounding error off.
-    return x >= rectangle.x - 1e-9 && x <= rectangle.x + rectangle.w + 1e-9 && y >= rectangle.y - 1e-9 && y <= rectangle.y + rectangle.h + 1e-9;
+    return { x: box.x + at.x, y: box.y + at.y };
   });
+}
+
+/** Whether the whole box of a shape, turned, is within a rectangle given by its top-left corner and its size. */
+export function boxWithin(box: Box, rectangle: { x: number; y: number; w: number; h: number }): boolean {
+  // Within a hair: a corner turned by 90° lands a rounding error off.
+  return cornersOf(box).every(({ x, y }) => x >= rectangle.x - 1e-9 && x <= rectangle.x + rectangle.w + 1e-9 && y >= rectangle.y - 1e-9 && y <= rectangle.y + rectangle.h + 1e-9);
 }

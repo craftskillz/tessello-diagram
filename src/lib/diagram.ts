@@ -182,11 +182,11 @@ export function newDiagram(id: string, title: string, updatedAt: number): Diagra
 
 /**
  * Removes a shape. The ends of arrows attached to it become free, where they were drawn: no arrow disappears, unless
- * `withArrows` asks to remove them too.
+ * `withArrows` asks to remove them too, but a locked arrow stays.
  */
 export function removeShape(diagram: Diagram, id: string, { withArrows = false } = {}): void {
   const attached = (end: Endpoint) => isAttached(end) && end.shapeId === id;
-  if (withArrows) diagram.arrows = diagram.arrows.filter((arrow) => !attached(arrow.from) && !attached(arrow.to));
+  if (withArrows) diagram.arrows = diagram.arrows.filter((arrow) => arrow.locked || (!attached(arrow.from) && !attached(arrow.to)));
   const paths = layoutArrows(new Map(diagram.shapes.map((shape) => [shape.id, shape])), diagram.arrows);
   for (const arrow of diagram.arrows) {
     const path = paths.get(arrow.id);
@@ -210,6 +210,35 @@ export function reorder(diagram: Diagram, ids: readonly string[], where: "front"
   const others = items.filter((item) => !ids.includes(item.id));
   (where === "front" ? [...others, ...moved] : [...moved, ...others]).forEach((item, z) => (item.z = z));
 }
+
+/** Gives the selected shapes one new group; fewer than two shapes are not grouped. Whether they were. */
+export function groupShapes(diagram: Diagram, ids: readonly string[]): boolean {
+  const members = diagram.shapes.filter((shape) => ids.includes(shape.id));
+  if (members.length < 2) return false;
+  const groupId = newId("group");
+  for (const shape of members) shape.groupId = groupId;
+  return true;
+}
+
+/** The groups that the selected shapes belong to. */
+const groupsOf = (diagram: Diagram, ids: readonly string[]): Set<string> =>
+  new Set(diagram.shapes.filter((shape) => ids.includes(shape.id) && shape.groupId).map((shape) => shape.groupId!));
+
+/** Clears the groups the selection touches, from all their members. */
+export function ungroupShapes(diagram: Diagram, ids: readonly string[]): void {
+  const groups = groupsOf(diagram, ids);
+  for (const shape of diagram.shapes) if (shape.groupId && groups.has(shape.groupId)) shape.groupId = null;
+}
+
+/** A selection with every member of the groups it touches: selecting a member selects its group. */
+export function withGroups(diagram: Diagram, ids: readonly string[]): string[] {
+  const groups = groupsOf(diagram, ids);
+  const members = diagram.shapes.filter((shape) => shape.groupId && groups.has(shape.groupId)).map((shape) => shape.id);
+  return [...new Set([...ids, ...members])];
+}
+
+/** The drawing order of an item put in front of all the others. */
+export const nextZ = (diagram: Diagram): number => Math.max(-1, ...diagram.shapes.map((shape) => shape.z), ...diagram.arrows.map((arrow) => arrow.z)) + 1;
 
 /** A new identifier, unique enough for the shapes, arrows and diagrams of one User. */
 export const newId = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;

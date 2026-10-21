@@ -3,9 +3,11 @@
   // finds both come from the shapes and arrows, through lib/geometry.ts and lib/arrows.ts. A gesture changes the model
   // as it goes and saves it when it ends.
   import { anchorOf, arrowAt, constrainAngle, endAt, endOf, headsOf, isDrawable, isShiftable, labelPlacement, labelPoint, layoutArrows, middlesOf, type Path, pathData, pathWithin, shiftSegment, snapWaypoint, startOf } from "../lib/arrows.ts";
-  import { type Arrow, COLORS, type Diagram, keepsRatio, newArrow, newId, newShape, removeShape, type Shape } from "../lib/diagram.ts";
-  import { type Box, boxWithin, type Corner, cornerSign, degrees, type Endpoint, isAttached, type Point, portPoint, portsOf, resizeBox, shapeAt } from "../lib/geometry.ts";
+  import { applyStyle, copyItems, copyStyle, pasteItems } from "../lib/clipboard.ts";
+  import { type Arrow, COLORS, type Diagram, keepsRatio, newArrow, newId, newShape, nextZ, removeShape, type Shape, withGroups } from "../lib/diagram.ts";
+  import { type Box, boxWithin, type Corner, cornersOf, cornerSign, degrees, type Endpoint, isAttached, type Point, portPoint, portsOf, resizeBox, shapeAt } from "../lib/geometry.ts";
   import { t } from "../lib/i18n.ts";
+  import { alignment, type Bounds, boundsOf, fitView, GRID, type Guide, pointsBounds, scaleBoxes, snapToGrid } from "../lib/placement.ts";
   import { save, type Tool, ui } from "../lib/store.svelte.ts";
   import { canvasMeasure, layoutLabel, LINE_HEIGHT } from "../lib/text.ts";
   import ArrowPanel from "./ArrowPanel.svelte";
@@ -27,6 +29,13 @@
   /** The narrowest a label can be made by its handle. */
   const LABEL_MIN = 20;
   const CORNERS: Corner[] = ["nw", "ne", "se", "sw"];
+  /** How far each paste lands from the last, in units of the drawing. */
+  const PASTE_OFFSET = 40;
+  /** The zooms the canvas allows, the step of its buttons, and the margin around the drawing when the view fits it, on screen. */
+  const ZOOM = { min: 0.1, max: 4, step: 1.25 };
+  const FIT_MARGIN = 40;
+  /** How far around a group its dashed outline is drawn, on screen. */
+  const GROUP_PAD = 6;
   const measure = canvasMeasure();
 
   let svg = $state<SVGSVGElement>();
@@ -39,7 +48,7 @@
   type Line = { id: string; from: Point; to: Point; waypoints: Point[] };
   type Gesture =
     | { kind: "pan"; from: Point; pan: Point }
-    | { kind: "move"; id: string; from: Point; starts: { id: string; x: number; y: number }[]; lines: Line[]; moved: boolean }
+    | { kind: "move"; id: string; from: Point; starts: (Box & { id: string })[]; lines: Line[]; moved: boolean }
     | { kind: "draw"; from: Endpoint; press: Point; at: Point; moved: boolean }
     | { kind: "end"; id: string; which: "from" | "to"; moved: boolean }
     | { kind: "waypoint"; id: string; index: number; moved: boolean }
@@ -48,8 +57,11 @@
     | { kind: "labelWidth"; id: string; moved: boolean }
     | { kind: "marquee"; from: Point; to: Point; kept: string[] }
     | { kind: "resize"; id: string; corner: Corner; from: Point; start: Box; moved: boolean }
+    | { kind: "resizeGroup"; corner: Corner; from: Point; bounds: Bounds; starts: (Box & { id: string })[]; moved: boolean }
     | { kind: "rotate"; id: string; text: boolean; moved: boolean };
   let gesture = $state<Gesture | null>(null);
+  /** The alignment guides shown while shapes move. */
+  let guides = $state<Guide[]>([]);
   /** Where the pointer is on the drawing, to show the ports it can reach. */
   let pointer = $state<Point | null>(null);
 
@@ -64,16 +76,33 @@
       (a, b) => (a.kind === "shape" ? a.shape.z : a.arrow.z) - (b.kind === "shape" ? b.shape.z : b.arrow.z),
     ),
   );
-  const nextZ = () => Math.max(-1, ...diagram.shapes.map((shape) => shape.z), ...diagram.arrows.map((arrow) => arrow.z)) + 1;
   const selectedShapes = $derived(diagram.shapes.filter((shape) => ui.selection.includes(shape.id)));
   const selectedArrows = $derived(diagram.arrows.filter((arrow) => ui.selection.includes(arrow.id)));
+  /** The selected items that are locked: they can be neither moved, resized nor deleted, and their panel only unlocks them. */
+  const selectedLocked = $derived([...selectedShapes, ...selectedArrows].filter((item) => item.locked));
+  /** The ids of what can be selected by a rectangle or Ctrl/Cmd+A, or deleted: what is not locked. */
+  const unlockedIds = (ids: readonly string[]) => ids.filter((id) => !(shapes.get(id) ?? arrows.get(id))?.locked);
   /** The path of each arrow: the line, its click zone, its handles and its label all follow it. */
   const paths = $derived(layoutArrows(shapes, diagram.arrows));
   /**
-   * The arrow that shows the handles of its ends: a single selected arrow, with the Select tool. With the Arrow tool, a
-   * press on its end starts a new arrow, which then shares its port.
+   * The arrow that shows the handles of its ends: a single selected arrow, with the Select tool, unless it is locked.
+   * With the Arrow tool, a press on its end starts a new arrow, which then shares its port.
    */
-  const withEnds = $derived(ui.tool === "select" && selectedArrows.length === 1 && ui.selection.length === 1 ? selectedArrows[0] : undefined);
+  const withEnds = $derived(ui.tool === "select" && selectedArrows.length === 1 && ui.selection.length === 1 && !selectedArrows[0].locked ? selectedArrows[0] : undefined);
+  /** The groups selected whole, each with the bounds of its members, outlined by a dashed line: not a member selected alone. */
+  const selectedGroups = $derived.by(() => {
+    const ids = new Set(selectedShapes.map((shape) => shape.groupId).filter((id) => id !== null));
+    return [...ids]
+      .map((id) => ({ id, members: diagram.shapes.filter((shape) => shape.groupId === id) }))
+      .filter(({ members }) => members.every((shape) => ui.selection.includes(shape.id)))
+      .map(({ id, members }) => ({ id, bounds: boundsOf(members)! }));
+  });
+  /** A group selected alone, with nothing locked: it shows the handles that resize it as one block. */
+  const groupWithHandles = $derived(
+    selectedGroups.length === 1 && !selectedLocked.length && !editing && selectedShapes.length > 1 && selectedShapes.every((shape) => shape.groupId === selectedGroups[0].id)
+      ? selectedGroups[0]
+      : undefined,
+  );
   /** The reach of the pointer in units of the drawing, from a reach on screen. */
   const reach = (pixels: number) => pixels / zoom;
   /**
@@ -114,8 +143,8 @@
         return Math.abs(across) <= w / 2 + LABEL_PAD && Math.abs(down) <= h / 2 + LABEL_PAD;
       });
   }
-  /** The shape that shows the handles to resize and turn it: a single selected shape. */
-  const withHandles = $derived(selectedShapes.length === 1 && !editing ? selectedShapes[0] : undefined);
+  /** The shape that shows the handles to resize and turn it: a single selected shape, unless it is locked. */
+  const withHandles = $derived(selectedShapes.length === 1 && !editing && !selectedShapes[0].locked ? selectedShapes[0] : undefined);
 
   // A diagram opens with its origin in the middle of the canvas, and nothing selected.
   $effect(() => {
@@ -160,15 +189,22 @@
       if (ui.tool === "select") capture(event, { kind: "marquee", from: at, to: at, kept: [...ui.selection] });
       return;
     }
+    // A click on a member of a group selects the whole group; Alt+click selects the member alone.
+    const picked = event.altKey ? [item.id] : withGroups(diagram, [item.id]);
     // Ctrl/Cmd+click adds a shape or an arrow to the selection, or takes it out.
     if (ctrl) {
-      ui.selection = ui.selection.includes(item.id) ? ui.selection.filter((id) => id !== item.id) : [...ui.selection, item.id];
+      ui.selection = ui.selection.includes(item.id) ? ui.selection.filter((id) => !picked.includes(id)) : [...new Set([...ui.selection, ...picked])];
       return;
     }
-    if (!ui.selection.includes(item.id)) ui.selection = [item.id];
-    // The selected shapes move, and the selected arrows whose two ends are free: an attached arrow does not move by its body.
-    const starts = selectedShapes.map(({ id, x, y }) => ({ id, x, y }));
-    const lines = selectedArrows.filter(isFree).map(({ id, from, to, waypoints }) => ({ id, from: { ...(from as Point) }, to: { ...(to as Point) }, waypoints: waypoints.map((point) => ({ ...point })) }));
+    if (!ui.selection.includes(item.id)) ui.selection = picked;
+    // A locked item is selected, and goes no further.
+    if (item.locked) return;
+    // The selected shapes move, and the selected arrows whose two ends are free: an attached arrow does not move by its
+    // body. Locked items stay.
+    const starts = selectedShapes.filter((shape) => !shape.locked).map(({ id, x, y, w, h, rotation }) => ({ id, x, y, w, h, rotation }));
+    const lines = selectedArrows
+      .filter((arrow) => isFree(arrow) && !arrow.locked)
+      .map(({ id, from, to, waypoints }) => ({ id, from: { ...(from as Point) }, to: { ...(to as Point) }, waypoints: waypoints.map((point) => ({ ...point })) }));
     capture(event, { kind: "move", id: item.id, from: at, starts, lines, moved: false });
   }
 
@@ -236,8 +272,7 @@
       gesture.moved = true;
     } else if (gesture.kind === "marquee") gesture.to = at;
     else if (gesture.kind === "move") {
-      const dx = at.x - gesture.from.x;
-      const dy = at.y - gesture.from.y;
+      const { dx, dy } = snapMove(gesture, at.x - gesture.from.x, at.y - gesture.from.y);
       for (const start of gesture.starts) {
         const shape = shapes.get(start.id);
         if (!shape) continue;
@@ -261,6 +296,18 @@
       const { x, y, w, h } = resizeBox(gesture.start, gesture.corner, delta, { keepRatio, fromCenter: ui.resizeFromCenter });
       Object.assign(shape, { x, y, w, h });
       gesture.moved = true;
+    } else if (gesture.kind === "resizeGroup") {
+      // The bounds of the group resize as a shape would; each member keeps its place and its size within them.
+      const { bounds } = gesture;
+      const box = { x: bounds.x + bounds.w / 2, y: bounds.y + bounds.h / 2, w: bounds.w, h: bounds.h, rotation: 0 };
+      const delta = { x: at.x - gesture.from.x, y: at.y - gesture.from.y };
+      const resized = resizeBox(box, gesture.corner, delta, { keepRatio: event.shiftKey, fromCenter: ui.resizeFromCenter });
+      const to = { x: resized.x - resized.w / 2, y: resized.y - resized.h / 2, w: resized.w, h: resized.h };
+      for (const { id, x, y, w, h } of scaleBoxes(gesture.starts, bounds, to)) {
+        const shape = shapes.get(id);
+        if (shape) Object.assign(shape, { x, y, w, h });
+      }
+      gesture.moved = true;
     } else {
       const shape = shapes.get(gesture.id);
       if (!shape) return;
@@ -273,21 +320,43 @@
     }
   }
 
+  /**
+   * The move of a drag, lined up with the other shapes by the guides, else snapped to the grid: the guides line up the
+   * bounds of the moved shapes, and the grid takes the center of the shape pressed. Free arrows moved alone are not snapped.
+   */
+  function snapMove(move: Extract<Gesture, { kind: "move" }>, dx: number, dy: number): { dx: number; dy: number } {
+    let aligned: ReturnType<typeof alignment> = { dx: null, dy: null, guides: [] };
+    if (diagram.guides && move.starts.length) {
+      const moving = boundsOf(move.starts.map((start) => ({ ...start, x: start.x + dx, y: start.y + dy })))!;
+      const others = diagram.shapes.filter((shape) => !move.starts.some((start) => start.id === shape.id)).map((shape) => boundsOf([shape])!);
+      aligned = alignment(moving, others, reach(SNAP));
+    }
+    guides = aligned.guides;
+    const anchor: Point | undefined = move.starts.find((start) => start.id === move.id) ?? move.starts[0];
+    const grid = diagram.grid && anchor ? snapToGrid({ x: anchor.x + dx, y: anchor.y + dy }) : undefined;
+    return {
+      dx: aligned.dx !== null ? dx + aligned.dx : grid ? grid.x - anchor!.x : dx,
+      dy: aligned.dy !== null ? dy + aligned.dy : grid ? grid.y - anchor!.y : dy,
+    };
+  }
+
   function onPointerUp(event: PointerEvent) {
     const ended = gesture;
     gesture = null;
+    guides = [];
     if (!ended) return;
     if (ended.kind !== "draw" && "moved" in ended && ended.moved) void save();
-    // A click without a drag on an item of the selection selects it alone.
-    if ((ended.kind === "move" || ended.kind === "label") && !ended.moved && !event.ctrlKey && !event.metaKey) ui.selection = [ended.id];
+    // A click without a drag on an item of the selection selects it alone, with its group unless Alt is held.
+    if ((ended.kind === "move" || ended.kind === "label") && !ended.moved && !event.ctrlKey && !event.metaKey)
+      ui.selection = event.altKey ? [ended.id] : withGroups(diagram, [ended.id]);
     // A click without a drag draws nothing.
     if (ended.kind === "draw" && ended.moved) {
-      const arrow = newArrow(newId("arrow"), ended.from, endingAt(ended.from, ended.at), nextZ());
+      const arrow = newArrow(newId("arrow"), ended.from, endingAt(ended.from, ended.at), nextZ(diagram));
       diagram.arrows.push(arrow);
       ui.selection = [arrow.id];
       void save();
     }
-    // The rectangle selects the shapes and the arrows it holds entirely.
+    // The rectangle selects the shapes and the arrows it holds entirely, and the groups of those shapes, but nothing locked.
     if (ended.kind === "marquee") {
       const rectangle = { x: Math.min(ended.from.x, ended.to.x), y: Math.min(ended.from.y, ended.to.y), w: Math.abs(ended.to.x - ended.from.x), h: Math.abs(ended.to.y - ended.from.y) };
       if (rectangle.w === 0 && rectangle.h === 0) return;
@@ -295,7 +364,7 @@
         ...diagram.shapes.filter((shape) => boxWithin(shape, rectangle)).map((shape) => shape.id),
         ...diagram.arrows.filter((arrow) => paths.has(arrow.id) && pathWithin(paths.get(arrow.id)!, rectangle)).map((arrow) => arrow.id),
       ];
-      ui.selection = [...new Set([...ended.kept, ...inside])];
+      ui.selection = [...new Set([...ended.kept, ...unlockedIds(withGroups(diagram, unlockedIds(inside)))])];
     }
   }
 
@@ -339,6 +408,7 @@
       return;
     }
     if (!ui.selection.includes(arrow.id)) ui.selection = [arrow.id];
+    if (arrow.locked) return event.stopPropagation();
     const at = toDrawing(event);
     capture(event, { kind: "label", id: arrow.id, grab: { x: center.x - at.x, y: center.y - at.y }, moved: false });
   }
@@ -354,6 +424,12 @@
     capture(event, { kind: "resize", id: shape.id, corner, from: toDrawing(event), start: { x, y, w, h, rotation }, moved: false });
   }
 
+  function startResizeGroup(event: PointerEvent, bounds: Bounds, corner: Corner) {
+    if (event.button !== 0) return;
+    const starts = selectedShapes.map(({ id, x, y, w, h, rotation }) => ({ id, x, y, w, h, rotation }));
+    capture(event, { kind: "resizeGroup", corner, from: toDrawing(event), bounds: { ...bounds }, starts, moved: false });
+  }
+
   function startRotate(event: PointerEvent, shape: Shape, text: boolean) {
     if (event.button !== 0) return;
     capture(event, { kind: "rotate", id: shape.id, text, moved: false });
@@ -363,12 +439,13 @@
     const at = toDrawing(event);
     // A double-click on an arrow or on its label edits its label. The pointer is captured by the canvas during a press,
     // so the double-click reaches the canvas, and the label is found by its box.
+    // A locked item is not edited.
     const arrow = labelAt(at) ?? arrowAt(diagram.arrows, paths, at, reach(HIT));
-    if (arrow) return startEditingLabel(arrow.id);
+    if (arrow) return arrow.locked || startEditingLabel(arrow.id);
     const shape = shapeAt(diagram.shapes, at);
-    if (shape) return startEditing(shape.id);
+    if (shape) return shape.locked || startEditing(shape.id);
     if (ui.tool === "select" || ui.tool === "arrow") return;
-    const created = newShape(newId("shape"), at, nextZ(), ui.tool);
+    const created = newShape(newId("shape"), at, nextZ(diagram), ui.tool);
     diagram.shapes.push(created);
     ui.selection = [created.id];
     void save();
@@ -380,11 +457,23 @@
     event.preventDefault();
     if (event.ctrlKey || event.metaKey) {
       const box = svg!.getBoundingClientRect();
-      const pointer = { x: event.clientX - box.left, y: event.clientY - box.top };
-      const next = Math.min(4, Math.max(0.1, zoom * Math.exp(-event.deltaY * 0.01)));
-      pan = { x: pointer.x - ((pointer.x - pan.x) * next) / zoom, y: pointer.y - ((pointer.y - pan.y) * next) / zoom };
-      zoom = next;
+      zoomTo(zoom * Math.exp(-event.deltaY * 0.01), { x: event.clientX - box.left, y: event.clientY - box.top });
     } else pan = { x: pan.x - event.deltaX, y: pan.y - event.deltaY };
+  }
+
+  /** Zooms around a point of the canvas, in pixels, which stays where it is: by default its center. */
+  function zoomTo(next: number, around: Point = { x: svg!.clientWidth / 2, y: svg!.clientHeight / 2 }) {
+    next = Math.min(ZOOM.max, Math.max(ZOOM.min, next));
+    pan = { x: around.x - ((around.x - pan.x) * next) / zoom, y: around.y - ((around.y - pan.y) * next) / zoom };
+    zoom = next;
+  }
+
+  /** "Fit": shows the whole drawing, its shapes and its arrows, centered; an empty drawing shows its origin at 100%. */
+  function fit() {
+    const points = [...diagram.shapes.flatMap((shape) => cornersOf(shape)), ...[...paths.values()].flatMap((path) => path.points)];
+    const content = pointsBounds(points);
+    const viewport = { w: svg!.clientWidth, h: svg!.clientHeight };
+    ({ zoom, pan } = content ? fitView(content, viewport, FIT_MARGIN) : { zoom: 1, pan: { x: viewport.w / 2, y: viewport.h / 2 } });
   }
 
   const TOOL_KEYS: Record<string, Tool> = { s: "select", r: "rect", e: "ellipse", d: "database", c: "circle", a: "actor", p: "postit", t: "text", f: "arrow" };
@@ -392,25 +481,68 @@
   function onKeyDown(event: KeyboardEvent) {
     if (editing || (event.target as HTMLElement).closest("input, textarea, [role=dialog]")) return;
     const key = event.key.toLowerCase();
+    const ctrl = event.ctrlKey || event.metaKey;
+    // With Alt, a Mac types another letter: the shortcuts of the style go by the key pressed.
+    if (ctrl && event.altKey && (event.code === "KeyC" || event.code === "KeyV")) {
+      event.preventDefault();
+      return event.code === "KeyC" ? copySelectionStyle() : pasteSelectionStyle();
+    }
     if (event.key === " ") {
       // Space on a button presses it, rather than moving the canvas.
       if ((event.target as HTMLElement).closest("button")) return;
       spaceHeld = true;
       event.preventDefault();
-    } else if ((event.ctrlKey || event.metaKey) && key === "a") {
+    } else if (ctrl && key === "a") {
       event.preventDefault();
-      ui.selection = [...diagram.shapes.map((shape) => shape.id), ...diagram.arrows.map((arrow) => arrow.id)];
+      ui.selection = unlockedIds([...diagram.shapes.map((shape) => shape.id), ...diagram.arrows.map((arrow) => arrow.id)]);
+    } else if (ctrl && key === "c") {
+      if (!ui.selection.length) return;
+      ui.clip = copyItems(diagram, ui.selection);
+      ui.pastes = 0;
+    } else if (ctrl && key === "v") {
+      // Ticket 08 pastes an image of the system clipboard first, when there is one: the key goes on to the `paste` event.
+      if (!ui.clip?.shapes.length && !ui.clip?.arrows.length) return;
+      ui.pastes++;
+      ui.selection = pasteItems(diagram, ui.clip, PASTE_OFFSET * ui.pastes);
+      void save();
     } else if ((event.key === "Delete" || event.key === "Backspace") && ui.selection.length) {
-      // Deleting a shape frees the ends of its arrows; Ctrl/Cmd+Delete deletes its arrows too.
-      const withArrows = event.ctrlKey || event.metaKey;
-      diagram.arrows = diagram.arrows.filter((arrow) => !ui.selection.includes(arrow.id));
-      for (const id of ui.selection) if (shapes.has(id)) removeShape(diagram, id, { withArrows });
-      ui.selection = [];
+      // Deleting a shape frees the ends of its arrows; Ctrl/Cmd+Delete deletes its arrows too. Locked items stay.
+      const removed = unlockedIds(ui.selection);
+      if (!removed.length) return;
+      diagram.arrows = diagram.arrows.filter((arrow) => !removed.includes(arrow.id));
+      for (const id of removed) if (shapes.has(id)) removeShape(diagram, id, { withArrows: ctrl });
+      ui.selection = ui.selection.filter((id) => !removed.includes(id));
+      void save();
+    } else if (key === "g" && !ctrl && !event.altKey) {
+      diagram.grid = !diagram.grid;
       void save();
     } else if (event.key === "Escape") {
       ui.tool = "select";
       ui.selection = [];
     } else if (!event.ctrlKey && !event.metaKey && !event.altKey && TOOL_KEYS[key]) ui.tool = TOOL_KEYS[key];
+  }
+
+  /** "Copy style": the style of the first selected shape, else of the first selected arrow. */
+  function copySelectionStyle() {
+    const source = selectedShapes[0] ?? selectedArrows[0];
+    if (source) ui.style = copyStyle(source, ui.styleWithSize);
+  }
+
+  /** "Paste style": applies the copied style to the selected items of its kind that are not locked. */
+  function pasteSelectionStyle() {
+    if (!ui.style) return;
+    applyStyle(
+      ui.style,
+      selectedShapes.filter((shape) => !shape.locked),
+      selectedArrows.filter((arrow) => !arrow.locked),
+    );
+    void save();
+  }
+
+  /** Locks the selection, which stays selected: its panel then offers to unlock it. */
+  function setLocked(locked: boolean) {
+    for (const item of [...selectedShapes, ...selectedArrows]) item.locked = locked;
+    void save();
   }
 
   function onKeyUp(event: KeyboardEvent) {
@@ -507,6 +639,15 @@
     ondblclick={onDoubleClick}
     onwheel={onWheel}
   >
+    <!-- The grid follows the pan and the zoom; it is not drawn when its lines would crowd together. -->
+    {#if diagram.grid && GRID * zoom >= 6}
+      <defs>
+        <pattern id="dg-grid" width={GRID * zoom} height={GRID * zoom} x={pan.x} y={pan.y} patternUnits="userSpaceOnUse">
+          <path class="dg-grid-line" d="M{GRID * zoom} 0H0V{GRID * zoom}" />
+        </pattern>
+      </defs>
+      <rect class="dg-grid" width="100%" height="100%" fill="url(#dg-grid)" />
+    {/if}
     <g transform="translate({pan.x} {pan.y}) scale({zoom})">
       {#each items as item (item.kind === "shape" ? item.shape.id : item.arrow.id)}
         {#if item.kind === "shape"}
@@ -647,6 +788,45 @@
         {/each}
       {/if}
 
+      {#each selectedGroups as group (group.id)}
+        {@const pad = GROUP_PAD / zoom}
+        <rect
+          class="dg-group-outline"
+          data-group={group.id}
+          x={group.bounds.x - pad}
+          y={group.bounds.y - pad}
+          width={group.bounds.w + pad * 2}
+          height={group.bounds.h + pad * 2}
+          stroke-width={1.5 / zoom}
+          stroke-dasharray="{6 / zoom} {4 / zoom}"
+        />
+      {/each}
+
+      {#each guides as guide, index (index)}
+        <line
+          class="dg-guide"
+          x1={guide.axis === "x" ? guide.at : guide.from}
+          y1={guide.axis === "x" ? guide.from : guide.at}
+          x2={guide.axis === "x" ? guide.at : guide.to}
+          y2={guide.axis === "x" ? guide.to : guide.at}
+          stroke-width={1 / zoom}
+          stroke-dasharray="{4 / zoom} {4 / zoom}"
+        />
+      {/each}
+
+      <!-- A locked item shows a padlock: at the top-right corner of a shape, in the middle of an arrow. -->
+      {#each selectedLocked as item (item.id)}
+        {@const path = "from" in item ? paths.get(item.id) : undefined}
+        {@const bounds = "from" in item ? undefined : boundsOf([item])}
+        {@const spot = path ? labelPoint(path, 0.5, 0) : bounds ? { x: bounds.x + bounds.w, y: bounds.y } : undefined}
+        {#if spot}
+          <g role="img" aria-label={t("locked_badge")} class="dg-lock-badge" transform="translate({spot.x} {spot.y}) scale({1 / zoom})">
+            <circle r="10" />
+            <path d="M-4,-1V-4a4,4 0 0 1 8,0V-1M-5.5,-1h11v7h-11z" />
+          </g>
+        {/if}
+      {/each}
+
       {#if gesture?.kind === "marquee"}
         <rect
           class="dg-marquee"
@@ -656,6 +836,25 @@
           height={Math.abs(gesture.to.y - gesture.from.y)}
           stroke-width={1 / zoom}
         />
+      {/if}
+
+      {#if groupWithHandles}
+        {@const bounds = groupWithHandles.bounds}
+        {@const size = 5 / zoom}
+        {#each CORNERS as corner (corner)}
+          <rect
+            role="button"
+            tabindex="-1"
+            aria-label={t(`resize_${corner}`)}
+            class="dg-handle resize-{corner}"
+            x={bounds.x + ((cornerSign(corner).x + 1) * bounds.w) / 2 - size}
+            y={bounds.y + ((cornerSign(corner).y + 1) * bounds.h) / 2 - size}
+            width={size * 2}
+            height={size * 2}
+            stroke-width={1.5 / zoom}
+            onpointerdown={(event) => startResizeGroup(event, bounds, corner)}
+          />
+        {/each}
       {/if}
 
       {#if withHandles}
@@ -738,12 +937,23 @@
       use:focus
     ></textarea>
   {/if}
+
+  <div class="dg-zoom" role="group" aria-label={t("zoom")}>
+    <button type="button" class="dg-btn" aria-label={t("zoom_out")} title={t("zoom_out")} onclick={() => zoomTo(zoom / ZOOM.step)}>−</button>
+    <output aria-label={t("zoom")}>{Math.round(zoom * 100)}%</output>
+    <button type="button" class="dg-btn" aria-label={t("zoom_in")} title={t("zoom_in")} onclick={() => zoomTo(zoom * ZOOM.step)}>+</button>
+    <button type="button" class="dg-btn" title={t("zoom_fit_hint")} onclick={fit}>{t("zoom_fit")}</button>
+  </div>
 </div>
 
-{#if selectedArrows.length && !selectedShapes.length}
-  <ArrowPanel arrows={selectedArrows} onEditLabel={startEditingLabel} />
+{#if selectedLocked.length}
+  <aside class="dg-panel" aria-label={t("locked_panel")}>
+    <button type="button" class="dg-btn" onclick={() => setLocked(false)}>{t("unlock")}</button>
+  </aside>
+{:else if selectedArrows.length && !selectedShapes.length}
+  <ArrowPanel arrows={selectedArrows} onEditLabel={startEditingLabel} onLock={() => setLocked(true)} onCopyStyle={copySelectionStyle} onPasteStyle={pasteSelectionStyle} />
 {:else}
-  <ShapePanel shapes={selectedShapes} onEditText={startEditing} />
+  <ShapePanel shapes={selectedShapes} onEditText={startEditing} onLock={() => setLocked(true)} onCopyStyle={copySelectionStyle} onPasteStyle={pasteSelectionStyle} />
 {/if}
 
 <style>
@@ -876,5 +1086,52 @@
   }
   .dg-label-editor {
     text-align: center;
+  }
+  .dg-grid {
+    pointer-events: none;
+  }
+  .dg-grid-line {
+    fill: none;
+    stroke: var(--line);
+    stroke-width: 1;
+  }
+  .dg-group-outline {
+    fill: none;
+    stroke: var(--accent);
+    pointer-events: none;
+  }
+  .dg-guide {
+    stroke: var(--accent);
+    pointer-events: none;
+  }
+  .dg-lock-badge {
+    pointer-events: none;
+  }
+  .dg-lock-badge circle {
+    fill: var(--accent);
+  }
+  .dg-lock-badge path {
+    fill: none;
+    stroke: var(--bg);
+    stroke-width: 1.6;
+    stroke-linejoin: round;
+  }
+  .dg-zoom {
+    position: absolute;
+    left: 12px;
+    bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--panel);
+    font-size: 12px;
+  }
+  .dg-zoom output {
+    min-width: 42px;
+    text-align: center;
+    color: var(--muted);
   }
 </style>

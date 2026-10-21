@@ -173,3 +173,9 @@ body {
   stroke-width: 2;
   stroke-linecap: round;
 }
+.dg-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+}

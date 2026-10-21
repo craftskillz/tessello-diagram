@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { detachEnds, newArrow, newDiagram, newShape, readDiagram, readIndex, removeShape } from "../src/lib/diagram.ts";
+import { detachEnds, groupShapes, newArrow, newDiagram, newShape, readDiagram, readIndex, removeShape, ungroupShapes, withGroups } from "../src/lib/diagram.ts";
 
 describe("reading the index of diagrams", () => {
   test("nothing stored yet is an empty index", () => {
@@ -196,6 +196,14 @@ describe("removing a shape", () => {
     removeShape(diagram, "b", { withArrows: true });
     assert.deepEqual(diagram.arrows.map((arrow) => arrow.id), ["free"]);
   });
+
+  test("with its arrows, keeps a locked arrow, its end freed", () => {
+    const diagram = newDiagram("d1", "Checkout", 0);
+    diagram.shapes.push(newShape("a", { x: -200, y: 0 }, 0), newShape("b", { x: 200, y: 0 }, 1));
+    diagram.arrows.push({ ...newArrow("ab", { shapeId: "a", port: null }, { shapeId: "b", port: null }, 2), locked: true });
+    removeShape(diagram, "b", { withArrows: true });
+    assert.deepEqual(diagram.arrows[0].to, { x: 140, y: 0 });
+  });
 });
 
 describe("detaching the ends of an arrow", () => {
@@ -204,5 +212,43 @@ describe("detaching the ends of an arrow", () => {
     detachEnds(arrow);
     assert.deepEqual(arrow.from, { shapeId: "a", port: null });
     assert.deepEqual(arrow.to, { x: 10, y: 20 });
+  });
+});
+
+describe("groups", () => {
+  const sample = () => {
+    const diagram = newDiagram("d1", "Checkout", 0);
+    diagram.shapes.push(newShape("a", { x: 0, y: 0 }, 0), newShape("b", { x: 200, y: 0 }, 1), newShape("c", { x: 400, y: 0 }, 2));
+    diagram.arrows.push(newArrow("ab", { shapeId: "a", port: null }, { shapeId: "b", port: null }, 3));
+    return diagram;
+  };
+
+  test("grouping gives the selected shapes one new group, and leaves the arrows out", () => {
+    const diagram = sample();
+    assert.equal(groupShapes(diagram, ["a", "b", "ab"]), true);
+    const [a, b, c] = diagram.shapes;
+    assert.ok(a.groupId);
+    assert.equal(b.groupId, a.groupId);
+    assert.equal(c.groupId, null);
+  });
+
+  test("grouping fewer than two shapes does nothing", () => {
+    const diagram = sample();
+    assert.equal(groupShapes(diagram, ["a", "ab"]), false);
+    assert.equal(diagram.shapes[0].groupId, null);
+  });
+
+  test("a selection takes in every member of the groups it touches", () => {
+    const diagram = sample();
+    groupShapes(diagram, ["a", "b"]);
+    assert.deepEqual(withGroups(diagram, ["b", "ab"]).sort(), ["a", "ab", "b"]);
+    assert.deepEqual(withGroups(diagram, ["c"]), ["c"]);
+  });
+
+  test("ungrouping clears the groups the selection touches, with their other members", () => {
+    const diagram = sample();
+    groupShapes(diagram, ["a", "b"]);
+    ungroupShapes(diagram, ["a"]);
+    assert.deepEqual(diagram.shapes.map((shape) => shape.groupId), [null, null, null]);
   });
 });

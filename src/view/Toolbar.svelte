@@ -2,7 +2,7 @@
   // The title of the open diagram, the tools, and whether the last change is saved. There is no Save button: each
   // change is saved when its gesture ends.
   import { t } from "../lib/i18n.ts";
-  import { diagrams, rename, status, type Tool, ui } from "../lib/store.svelte.ts";
+  import { diagrams, rename, save, status, type Tool, ui } from "../lib/store.svelte.ts";
 
   const TOOLS: { tool: Tool; label: () => string; icon: string }[] = [
     { tool: "select", label: () => t("tool_select"), icon: "M5 3l14 8-6 2-3 6z" },
@@ -51,6 +51,13 @@
   >
     {ui.resizeFromCenter ? t("resize_center") : t("resize_corner")}
   </button>
+  {#if diagrams.open}
+    {@const diagram = diagrams.open}
+    <div class="dg-tools">
+      <button type="button" class="dg-btn" aria-pressed={diagram.grid} title={t("grid_hint")} onclick={() => ((diagram.grid = !diagram.grid), void save())}>{t("grid")}</button>
+      <button type="button" class="dg-btn" aria-pressed={diagram.guides} title={t("guides_hint")} onclick={() => ((diagram.guides = !diagram.guides), void save())}>{t("guides")}</button>
+    </div>
+  {/if}
   <p class="dg-save" class:failed={status.saveError} role="status">
     {status.saveError ? t("save_failed") : status.saving ? t("saving") : t("saved")}
   </p>

@@ -62,7 +62,21 @@ Drag the round handle above the shape to turn it (**Shift** turns by steps of 15
 
 The panel on the right styles every selected shape: its color, the opacity of its background, the size and alignment of its text, and whether it is in front of or behind the others.
 
-To move around the canvas, use the wheel, or drag while holding **Space** or the middle button. **Ctrl+wheel** (**Cmd+wheel** on a Mac) zooms.
+Select a shape and click **Copy style** (**Ctrl+Alt+C**, **Cmd+Option+C** on a Mac) to copy its color, the opacity of its background, and the size and alignment of its text; tick **with size** to copy its width and height too. Then select other shapes and click **Paste style** (**Ctrl+Alt+V**, **Cmd+Option+V**). An arrow's style is copied the same way, onto other arrows: its arrowheads, its line, its width, its color, the size of its label and its route.
+
+## Groups, locks and copies
+
+Select at least two shapes and click **Group selection**. A click on a member of the group then selects the whole group, outlined by a dashed line: it moves, resizes by its corners and takes a style as one block. **Alt+click** (**Option+click** on a Mac) selects a member alone. **Ungroup** undoes the groups of the selection.
+
+Click **Lock** to protect the selected shapes or arrows. A locked item is still selected by a click, with a padlock, but it can no longer be moved, resized or deleted, and its panel offers only **Unlock**. A selection rectangle and **Ctrl+A** leave locked items out.
+
+**Ctrl+C** (**Cmd+C**) copies the selected shapes, with the arrows between them. **Ctrl+V** (**Cmd+V**) pastes them, a little further down and to the right each time. A pasted group is a new group, apart from the one it was copied from.
+
+## Grid, guides and zoom
+
+A shape you move snaps to the **Grid**, every 20 units; press **G** or click **Grid (G)** to turn it off or on. While you move a shape, **Guides** line it up with the edges and centers of the other shapes, and show the line it follows; they win over the grid. Both are on in a new diagram, and each diagram keeps its own choice.
+
+To move around the canvas, use the wheel, or drag while holding **Space** or the middle button. **Ctrl+wheel** (**Cmd+wheel** on a Mac) zooms, as do the **−** and **+** buttons at the bottom left, beside the zoom level. **Fit** shows the whole drawing.
 
 ## Your data
 
