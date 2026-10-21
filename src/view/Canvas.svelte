@@ -2,7 +2,7 @@
   // The canvas of the open diagram, drawn in SVG from its model alone (lib/diagram.ts): what is drawn and what a click
   // finds both come from the shapes and arrows, through lib/geometry.ts and lib/arrows.ts. A gesture changes the model
   // as it goes and saves it when it ends.
-  import { arrowAt, constrainAngle, endAt, headOf, isDrawable, layoutArrows, pathData, pathWithin, pointAlong, anchorOf } from "../lib/arrows.ts";
+  import { anchorOf, arrowAt, constrainAngle, endAt, endOf, headOf, isDrawable, isShiftable, layoutArrows, middlesOf, type Path, pathData, pathWithin, pointAlong, shiftSegment, snapWaypoint, startOf } from "../lib/arrows.ts";
   import { type Arrow, type Diagram, keepsRatio, newArrow, newId, newShape, removeShape, type Shape } from "../lib/diagram.ts";
   import { type Box, boxWithin, type Corner, cornerSign, degrees, type Endpoint, isAttached, type Point, portPoint, portsOf, resizeBox, shapeAt } from "../lib/geometry.ts";
   import { t } from "../lib/i18n.ts";
@@ -20,6 +20,8 @@
   const HIT = 5;
   const PORT_REACH = 8;
   const DRAG = 3;
+  /** How near the line of its neighbor a waypoint aligns with it, on screen. */
+  const SNAP = 6;
   const CORNERS: Corner[] = ["nw", "ne", "se", "sw"];
   const measure = canvasMeasure();
 
@@ -36,6 +38,8 @@
     | { kind: "move"; id: string; from: Point; starts: { id: string; x: number; y: number }[]; lines: Line[]; moved: boolean }
     | { kind: "draw"; from: Endpoint; press: Point; at: Point; moved: boolean }
     | { kind: "end"; id: string; which: "from" | "to"; moved: boolean }
+    | { kind: "waypoint"; id: string; index: number; moved: boolean }
+    | { kind: "segment"; id: string; index: number; path: Path; from: Point; press: Point; moved: boolean }
     | { kind: "marquee"; from: Point; to: Point; kept: string[] }
     | { kind: "resize"; id: string; corner: Corner; from: Point; start: Box; moved: boolean }
     | { kind: "rotate"; id: string; text: boolean; moved: boolean };
@@ -160,6 +164,29 @@
       const other = gesture.which === "from" ? arrow.to : arrow.from;
       arrow[gesture.which] = endingAt(other, event.shiftKey ? constrainAngle(anchorOf(shapes, other), at) : at);
       gesture.moved = true;
+    } else if (gesture.kind === "waypoint") {
+      const arrow = diagram.arrows.find((arrow) => arrow.id === (gesture as { id: string }).id);
+      if (!arrow) return;
+      moveWaypoint(arrow, gesture.index, at);
+      gesture.moved = true;
+    } else if (gesture.kind === "segment") {
+      const arrow = diagram.arrows.find((arrow) => arrow.id === (gesture as { id: string }).id);
+      // A click on the handle, without a drag, changes nothing.
+      if (!arrow || (!gesture.moved && Math.hypot(event.clientX - gesture.press.x, event.clientY - gesture.press.y) <= DRAG)) return;
+      const { index, path } = gesture;
+      if (isShiftable(arrow.route, path, index)) {
+        // A segment between two corners of an elbow route moves sideways.
+        arrow.waypoints = shiftSegment(path, index, { x: at.x - gesture.from.x, y: at.y - gesture.from.y });
+        gesture.moved = true;
+      } else {
+        // Elsewhere, the drag adds a waypoint there, and moves it. An elbow route keeps its corners as waypoints.
+        const waypoints = arrow.route === "elbow" ? path.points.slice(1, -1) : [...arrow.waypoints];
+        const inserted = arrow.route === "elbow" ? (index === 0 ? 0 : waypoints.length) : index;
+        waypoints.splice(inserted, 0, at);
+        arrow.waypoints = waypoints;
+        moveWaypoint(arrow, inserted, at);
+        gesture = { kind: "waypoint", id: arrow.id, index: inserted, moved: true };
+      }
     } else if (gesture.kind === "marquee") gesture.to = at;
     else if (gesture.kind === "move") {
       const dx = at.x - gesture.from.x;
@@ -228,6 +255,29 @@
   function startEnd(event: PointerEvent, arrow: Arrow, which: "from" | "to") {
     if (event.button !== 0) return;
     capture(event, { kind: "end", id: arrow.id, which, moved: false });
+  }
+
+  /** Moves a waypoint to a point, aligned with the one before it and the one after it, or with the end there. */
+  function moveWaypoint(arrow: Arrow, index: number, at: Point) {
+    const before = index === 0 ? anchorOf(shapes, arrow.from) : arrow.waypoints[index - 1];
+    const after = index === arrow.waypoints.length - 1 ? anchorOf(shapes, arrow.to) : arrow.waypoints[index + 1];
+    arrow.waypoints[index] = snapWaypoint(at, [before, after], reach(SNAP));
+  }
+
+  function startWaypoint(event: PointerEvent, arrow: Arrow, index: number) {
+    if (event.button !== 0) return;
+    capture(event, { kind: "waypoint", id: arrow.id, index, moved: false });
+  }
+
+  function startSegment(event: PointerEvent, arrow: Arrow, path: Path, index: number) {
+    if (event.button !== 0) return;
+    capture(event, { kind: "segment", id: arrow.id, index, path, from: toDrawing(event), press: { x: event.clientX, y: event.clientY }, moved: false });
+  }
+
+  function removeWaypoint(event: MouseEvent, arrow: Arrow, index: number) {
+    event.stopPropagation();
+    arrow.waypoints = arrow.waypoints.filter((_, position) => position !== index);
+    void save();
   }
 
   function startResize(event: PointerEvent, shape: Shape, corner: Corner) {
@@ -417,7 +467,38 @@
       {#if withEnds && paths.get(withEnds.id)}
         {@const arrow = withEnds}
         {@const path = paths.get(arrow.id)!}
-        {#each [["from", path.start], ["to", path.end]] as const as [which, at] (which)}
+        <!-- A handle in the middle of each segment adds a waypoint, or moves the segment of an elbow route. -->
+        {#each middlesOf(path) as at, index (index)}
+          {@const elbow = isShiftable(arrow.route, path, index)}
+          <rect
+            role="button"
+            tabindex="-1"
+            aria-label={t(elbow ? "elbow_segment_handle" : "segment_handle")}
+            class="dg-handle dg-segment"
+            class:elbow
+            x={at.x - 3.5 / zoom}
+            y={at.y - 3.5 / zoom}
+            width={7 / zoom}
+            height={7 / zoom}
+            stroke-width={1.5 / zoom}
+            onpointerdown={(event) => startSegment(event, arrow, path, index)}
+          />
+        {/each}
+        {#each arrow.waypoints as at, index (index)}
+          <circle
+            role="button"
+            tabindex="-1"
+            aria-label={t("waypoint_handle")}
+            class="dg-handle dg-waypoint"
+            cx={at.x}
+            cy={at.y}
+            r={4.5 / zoom}
+            stroke-width={1.5 / zoom}
+            onpointerdown={(event) => startWaypoint(event, arrow, index)}
+            ondblclick={(event) => removeWaypoint(event, arrow, index)}
+          />
+        {/each}
+        {#each [["from", startOf(path)], ["to", endOf(path)]] as const as [which, at] (which)}
           <circle
             role="button"
             tabindex="-1"
@@ -567,7 +648,14 @@
   .dg-port.aimed {
     fill: var(--accent);
   }
-  .dg-end {
+  .dg-end,
+  .dg-waypoint {
+    cursor: move;
+  }
+  .dg-segment {
+    cursor: copy;
+  }
+  .dg-segment.elbow {
     cursor: move;
   }
   .dg-marquee {

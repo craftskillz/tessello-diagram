@@ -3,7 +3,7 @@
 // a hand-edited file may have written it: what cannot be read is skipped, and a missing value takes its creation value.
 // The model is the whole one of the spec, so that what later versions store is read back without loss.
 
-import { layoutArrows } from "./arrows.ts";
+import { endOf, layoutArrows, startOf } from "./arrows.ts";
 import { type Endpoint, isAttached, type Point } from "./geometry.ts";
 
 export const SHAPE_TYPES = ["rect", "ellipse", "database", "circle", "actor", "postit", "text", "image", "custom"] as const;
@@ -47,7 +47,7 @@ export const keepsRatio = (type: ShapeType): boolean => type === "actor" || type
 
 const TEXT_ALIGNS = ["left", "center", "right"] as const;
 const TEXT_VALIGNS = ["top", "middle", "bottom"] as const;
-const ROUTES = ["straight", "curved", "elbow"] as const;
+export const ROUTES = ["straight", "curved", "elbow"] as const;
 const HEADS = ["none", "start", "end", "both"] as const;
 
 export interface Shape {
@@ -156,13 +156,13 @@ export function removeShape(diagram: Diagram, id: string, { withArrows = false }
   for (const arrow of diagram.arrows) {
     const path = paths.get(arrow.id);
     if (!path) continue;
-    if (attached(arrow.from)) arrow.from = { ...path.start };
-    if (attached(arrow.to)) arrow.to = { ...path.end };
+    if (attached(arrow.from)) arrow.from = { ...startOf(path) };
+    if (attached(arrow.to)) arrow.to = { ...endOf(path) };
   }
   diagram.shapes = diagram.shapes.filter((shape) => shape.id !== id);
 }
 
-/** Makes the ends of an arrow attached to a port automatic: they then aim at the other end, wherever it is. */
+/** Makes the ends of an arrow attached to a port automatic: they then aim at the next point of the arrow, wherever it is. */
 export function detachEnds(arrow: Arrow): void {
   if (isAttached(arrow.from)) arrow.from = { shapeId: arrow.from.shapeId, port: null };
   if (isAttached(arrow.to)) arrow.to = { shapeId: arrow.to.shapeId, port: null };

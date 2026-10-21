@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { arrowAt, constrainAngle, distanceTo, endAt, headOf, isDrawable, layoutArrows, type Path, pathWithin, pointAlong } from "../src/lib/arrows.ts";
+import { contains } from "../src/lib/geometry.ts";
+import { arrowAt, constrainAngle, distanceTo, endAt, endOf, headOf, isDrawable, layoutArrows, type Path, pathWithin, pointAlong, shiftSegment, snapWaypoint, startOf } from "../src/lib/arrows.ts";
 
 const close = (actual: { x: number; y: number }, expected: { x: number; y: number }, within = 1e-9) => {
   assert.ok(Math.abs(actual.x - expected.x) < within && Math.abs(actual.y - expected.y) < within, `${JSON.stringify(actual)} ≠ ${JSON.stringify(expected)}`);
@@ -61,24 +62,26 @@ describe("the path of an arrow", () => {
   const b = rect("b", 200, 0);
   const shapes = new Map([a, b].map((shape) => [shape.id, shape]));
   const auto = (shapeId: string) => ({ shapeId, port: null });
-  const arrow = (id: string, from: object, to: object, route: "straight" | "curved" = "straight") => ({ id, from, to, route }) as Parameters<typeof layoutArrows>[1][number];
+  const arrow = (id: string, from: object, to: object, route: "straight" | "curved" | "elbow" = "straight", waypoints: object[] = []) =>
+    ({ id, from, to, route, waypoints }) as Parameters<typeof layoutArrows>[1][number];
   /** A straight path from `start` to `end`, within a millionth. */
   const straight = (path: Path | undefined, start: { x: number; y: number }, end: { x: number; y: number }) => {
     assert.equal(path?.controls, null);
-    close(path!.start, start, 1e-6);
-    close(path!.end, end, 1e-6);
+    assert.equal(path!.points.length, 2);
+    close(startOf(path!), start, 1e-6);
+    close(endOf(path!), end, 1e-6);
   };
 
   test("a single straight arrow goes from outline to outline, between the centers", () => {
     const path = layoutArrows(shapes, [arrow("1", auto("a"), auto("b"))]).get("1")!;
-    assert.deepEqual(path, { start: { x: -140, y: 0 }, end: { x: 140, y: 0 }, controls: null });
+    assert.deepEqual(path, { points: [{ x: -140, y: 0 }, { x: 140, y: 0 }], controls: null });
   });
 
   test("an automatic end aims at the port the other end is attached to", () => {
     const path = layoutArrows(shapes, [arrow("1", auto("a"), { shapeId: "b", port: "N" })]).get("1")!;
-    close(path.end, { x: 200, y: -30 });
+    close(endOf(path), { x: 200, y: -30 });
     // From the center of A toward (200, −30), the right side of A is reached at y = −30 × 60 / 400.
-    close(path.start, { x: -140, y: -4.5 });
+    close(startOf(path), { x: -140, y: -4.5 });
   });
 
   test("two straight arrows between the same shapes are drawn side by side", () => {
@@ -102,40 +105,126 @@ describe("the path of an arrow", () => {
 
   test("a curved arrow leaves a port in the direction the port faces", () => {
     const path = layoutArrows(shapes, [arrow("1", { shapeId: "a", port: "N" }, { shapeId: "b", port: "N" }, "curved")]).get("1")!;
-    close(path.start, { x: -200, y: -30 });
-    close(path.end, { x: 200, y: -30 });
-    assert.equal(path.controls![0].x, -200);
-    assert.ok(path.controls![0].y < -30);
-    assert.equal(path.controls![1].x, 200);
-    assert.ok(path.controls![1].y < -30);
+    close(startOf(path), { x: -200, y: -30 });
+    close(endOf(path), { x: 200, y: -30 });
+    assert.equal(path.controls![0][0].x, -200);
+    assert.ok(path.controls![0][0].y < -30);
+    assert.equal(path.controls![0][1].x, 200);
+    assert.ok(path.controls![0][1].y < -30);
   });
 
   test("arrows that share a port fan out from it, without crossing", () => {
     const paths = layoutArrows(shapes, [arrow("down", { shapeId: "a", port: "E" }, { x: 100, y: 50 }), arrow("up", { shapeId: "a", port: "E" }, { x: 100, y: -50 })]);
-    close(paths.get("up")!.start, { x: -140, y: -4 });
-    close(paths.get("down")!.start, { x: -140, y: 4 });
+    close(startOf(paths.get("up")!), { x: -140, y: -4 });
+    close(startOf(paths.get("down")!), { x: -140, y: 4 });
   });
 
   test("arrows that share a corner port fan out along the outline, never inside the shape", () => {
     const paths = layoutArrows(shapes, [arrow("1", { shapeId: "a", port: "NE" }, { x: 0, y: -200 }), arrow("2", { shapeId: "a", port: "NE" }, { x: 100, y: 0 })]);
-    const starts = ["1", "2"].map((id) => paths.get(id)!.start);
+    const starts = ["1", "2"].map((id) => startOf(paths.get(id)!));
     // The top-right corner of A is at (−140, −30): each start is on its top side or on its right side.
     for (const start of starts) assert.ok(Math.abs(start.y + 30) < 1e-9 || Math.abs(start.x + 140) < 1e-9, JSON.stringify(start));
     assert.ok(Math.hypot(starts[0].x - starts[1].x, starts[0].y - starts[1].y) > 4, JSON.stringify(starts));
   });
 
   test("an arrow alone on its port starts on it", () => {
-    close(layoutArrows(shapes, [arrow("1", { shapeId: "a", port: "SE" }, { x: 0, y: 200 })]).get("1")!.start, { x: -140, y: 30 });
+    close(startOf(layoutArrows(shapes, [arrow("1", { shapeId: "a", port: "SE" }, { x: 0, y: 200 })]).get("1")!), { x: -140, y: 30 });
   });
 
   test("follows a shape that moved", () => {
     const moved = new Map(shapes).set("b", { ...b, y: 400 });
     // From B toward the center of A, the direction (−400, −400) reaches the top side of B first.
-    close(layoutArrows(moved, [arrow("1", auto("a"), auto("b"))]).get("1")!.end, { x: 170, y: 370 });
+    close(endOf(layoutArrows(moved, [arrow("1", auto("a"), auto("b"))]).get("1")!), { x: 170, y: 370 });
   });
 
   test("an automatic end aims at a free end", () => {
     straight(layoutArrows(shapes, [arrow("1", auto("a"), { x: -200, y: 300 })]).get("1"), { x: -200, y: 30 }, { x: -200, y: 300 });
+  });
+
+  test("a straight arrow is a broken line through its waypoints, each automatic end aiming at the waypoint next to it", () => {
+    const path = layoutArrows(shapes, [arrow("1", auto("a"), auto("b"), "straight", [{ x: -200, y: -200 }, { x: 200, y: -200 }])]).get("1")!;
+    // Toward a waypoint straight above, each end leaves its shape by the top side, not toward the other shape.
+    assert.deepEqual(path, { points: [{ x: -200, y: -30 }, { x: -200, y: -200 }, { x: 200, y: -200 }, { x: 200, y: -30 }], controls: null });
+  });
+
+  test("a curved arrow is a smooth curve through its waypoints", () => {
+    const path = layoutArrows(shapes, [arrow("1", auto("a"), auto("b"), "curved", [{ x: 0, y: -200 }])]).get("1")!;
+    close(path.points[1], { x: 0, y: -200 });
+    assert.equal(path.controls!.length, 2);
+    // At the waypoint, the curve runs parallel to the line between its neighbors: level, as they are at the same height.
+    close(path.controls![0][1], { x: -path.controls![1][0].x, y: -200 }, 1e-6);
+    assert.equal(path.controls![1][0].y, -200);
+    assert.ok(distanceTo(path, { x: 0, y: -200 }) < 1e-9);
+    // Each end leaves its shape toward the waypoint, by the top side.
+    assert.ok(Math.abs(startOf(path).y + 30) < 1e-9 && Math.abs(endOf(path).y + 30) < 1e-9, JSON.stringify(path.points));
+  });
+
+  test("an elbow arrow between two shapes side by side goes straight from side to side", () => {
+    straight(layoutArrows(shapes, [arrow("1", auto("a"), auto("b"), "elbow")]).get("1"), { x: -140, y: 0 }, { x: 140, y: 0 });
+  });
+
+  test("an elbow arrow leaves each shape perpendicular to its side, and turns halfway", () => {
+    const lower = new Map(shapes).set("b", { ...b, y: 200 });
+    const path = layoutArrows(lower, [arrow("1", auto("a"), auto("b"), "elbow")]).get("1")!;
+    assert.deepEqual(path.points, [{ x: -140, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 200 }, { x: 140, y: 200 }]);
+  });
+
+  test("an elbow arrow leaves a port along the side it is on, and arrives on a port the same way", () => {
+    const path = layoutArrows(shapes, [arrow("1", { shapeId: "a", port: "N" }, { shapeId: "b", port: "S" }, "elbow")]).get("1")!;
+    // Out of the top of A and into the bottom of B: up 20, across halfway, down below B, across, and up into it.
+    assert.deepEqual(path.points, [{ x: -200, y: -30 }, { x: -200, y: -50 }, { x: 0, y: -50 }, { x: 0, y: 50 }, { x: 200, y: 50 }, { x: 200, y: 30 }]);
+  });
+
+  test("an elbow arrow from a corner port leaves along the side that faces where it goes", () => {
+    const path = layoutArrows(shapes, [arrow("1", { shapeId: "a", port: "NE" }, { x: -140, y: -200 }, "elbow")]).get("1")!;
+    assert.deepEqual(path.points, [{ x: -140, y: -30 }, { x: -140, y: -200 }]);
+  });
+
+  test("an elbow arrow passes through its waypoints, with only horizontal and vertical segments", () => {
+    // A segment moved down: its two corners are the waypoints.
+    const path = layoutArrows(shapes, [arrow("1", auto("a"), auto("b"), "elbow", [{ x: -200, y: 100 }, { x: 200, y: 100 }])]).get("1")!;
+    assert.deepEqual(path.points, [{ x: -200, y: 30 }, { x: -200, y: 100 }, { x: 200, y: 100 }, { x: 200, y: 30 }]);
+    const turned = layoutArrows(shapes, [arrow("1", { x: -300, y: 300 }, { x: 300, y: 300 }, "elbow", [{ x: 0, y: 200 }])]).get("1")!;
+    assert.deepEqual(turned.points, [{ x: -300, y: 300 }, { x: 0, y: 300 }, { x: 0, y: 200 }, { x: 0, y: 300 }, { x: 300, y: 300 }]);
+  });
+
+  /** Whether a path goes through the inside of a shape, anywhere but at its two ends. */
+  const enters = (path: Path, shape: Parameters<typeof contains>[0]) =>
+    path.points.slice(1).some((to, index) => {
+      const from = path.points[index];
+      return Array.from({ length: 99 }, (_, step) => (step + 1) / 100).some((t) => contains(shape, { x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t }));
+    });
+
+  test("an elbow arrow from a port facing away from where it goes goes around its shape, never through it", () => {
+    const routes = [
+      arrow("west", { shapeId: "a", port: "W" }, auto("b"), "elbow"),
+      arrow("east", { shapeId: "a", port: "E" }, { shapeId: "b", port: "E" }, "elbow"),
+      // Routing around other shapes is beyond the spec: this one ends on a free point, on the side of its waypoint.
+      arrow("back", { shapeId: "a", port: "E" }, { x: -400, y: 200 }, "elbow", [{ x: -400, y: 0 }]),
+    ];
+    const paths = layoutArrows(shapes, routes);
+    for (const { id } of routes) {
+      const path = paths.get(id)!;
+      assert.ok(!enters(path, a) && !enters(path, b), `${id}: ${JSON.stringify(path.points)}`);
+      assert.ok(path.points.slice(1).every((point, index) => point.x === path.points[index].x || point.y === path.points[index].y), `${id}: ${JSON.stringify(path.points)}`);
+    }
+    // Out of the west port of A, 20 to the west, then below it.
+    assert.deepEqual(paths.get("west")!.points.slice(0, 3), [{ x: -260, y: 0 }, { x: -280, y: 0 }, { x: -280, y: 50 }]);
+  });
+
+  test("parallel elbow arrows between the same shapes are kept apart", () => {
+    const lower = new Map(shapes).set("b", { ...b, y: 200 });
+    const paths = layoutArrows(lower, [arrow("1", auto("a"), auto("b"), "elbow"), arrow("2", auto("a"), auto("b"), "elbow")]);
+    assert.deepEqual(paths.get("1")!.points, [{ x: -140, y: -12 }, { x: -12, y: -12 }, { x: -12, y: 188 }, { x: 140, y: 188 }]);
+    assert.deepEqual(paths.get("2")!.points, [{ x: -140, y: 12 }, { x: 12, y: 12 }, { x: 12, y: 212 }, { x: 140, y: 212 }]);
+  });
+
+  test("keeps its waypoints where they are when a shape moves: only the segments at its ends follow", () => {
+    const waypoints = [{ x: -200, y: -200 }, { x: 200, y: -200 }];
+    const moved = new Map(shapes).set("b", { ...b, x: 300, y: 100 });
+    const path = layoutArrows(moved, [arrow("1", auto("a"), auto("b"), "straight", waypoints)]).get("1")!;
+    assert.deepEqual(path.points.slice(1, -1), waypoints);
+    close(endOf(path), { x: 290, y: 70 });
   });
 
   test("an arrow attached to a shape that no longer exists has no path", () => {
@@ -143,10 +232,39 @@ describe("the path of an arrow", () => {
   });
 });
 
+describe("a waypoint being dragged", () => {
+  const neighbors = [{ x: 0, y: 0 }, { x: 200, y: 100 }];
+
+  test("aligns exactly with a neighbor it is near, horizontally or vertically", () => {
+    assert.deepEqual(snapWaypoint({ x: 4, y: 60 }, neighbors, 6), { x: 0, y: 60 });
+    assert.deepEqual(snapWaypoint({ x: 120, y: 97 }, neighbors, 6), { x: 120, y: 100 });
+    // Near both, it takes the corner where they meet.
+    assert.deepEqual(snapWaypoint({ x: 3, y: 104 }, neighbors, 6), { x: 0, y: 100 });
+  });
+
+  test("stays where it is away from its neighbors, the reach being given so that it stays the same on screen", () => {
+    assert.deepEqual(snapWaypoint({ x: 10, y: 60 }, neighbors, 6), { x: 10, y: 60 });
+    assert.deepEqual(snapWaypoint({ x: 10, y: 60 }, neighbors, 12), { x: 0, y: 60 });
+  });
+});
+
+describe("a segment of an elbow route being dragged", () => {
+  const route: Path = { points: [{ x: -140, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 200 }, { x: 140, y: 200 }], controls: null };
+
+  test("moves sideways, its corners becoming the waypoints of the arrow", () => {
+    assert.deepEqual(shiftSegment(route, 1, { x: 50, y: 30 }), [{ x: 50, y: 0 }, { x: 50, y: 200 }]);
+  });
+
+  test("a level segment moves up or down", () => {
+    const level: Path = { points: [{ x: 0, y: -30 }, { x: 0, y: -50 }, { x: 200, y: -50 }, { x: 200, y: -30 }], controls: null };
+    assert.deepEqual(shiftSegment(level, 1, { x: 15, y: -40 }), [{ x: 0, y: -90 }, { x: 200, y: -90 }]);
+  });
+});
+
 describe("the distance from a point to the path of an arrow", () => {
-  const line: Path = { start: { x: 0, y: 0 }, end: { x: 100, y: 0 }, controls: null };
+  const line: Path = { points: [{ x: 0, y: 0 }, { x: 100, y: 0 }], controls: null };
   // A symmetric curve: its middle is at (50, −60), where it runs level.
-  const curve: Path = { start: { x: 0, y: 0 }, end: { x: 100, y: 0 }, controls: [{ x: 0, y: -80 }, { x: 100, y: -80 }] };
+  const curve: Path = { points: [{ x: 0, y: 0 }, { x: 100, y: 0 }], controls: [[{ x: 0, y: -80 }, { x: 100, y: -80 }]] };
 
   test("on a straight path, is the distance to the segment, not to its line", () => {
     assert.equal(distanceTo(line, { x: 50, y: 10 }), 10);
@@ -166,8 +284,8 @@ describe("the distance from a point to the path of an arrow", () => {
 
 describe("the arrow under a point", () => {
   const paths = new Map<string, Path>([
-    ["low", { start: { x: 0, y: 0 }, end: { x: 100, y: 0 }, controls: null }],
-    ["high", { start: { x: 0, y: -8 }, end: { x: 100, y: -8 }, controls: null }],
+    ["low", { points: [{ x: 0, y: 0 }, { x: 100, y: 0 }], controls: null }],
+    ["high", { points: [{ x: 0, y: -8 }, { x: 100, y: -8 }], controls: null }],
   ]);
   const arrows = [
     { id: "low", z: 0 },
@@ -191,19 +309,19 @@ describe("the arrow under a point", () => {
 
 describe("the head of an arrow", () => {
   test("on a straight path, its tip is on the end and the line stops at its base", () => {
-    const { line, points } = headOf({ start: { x: 0, y: 0 }, end: { x: 100, y: 0 }, controls: null }, 10);
-    assert.deepEqual(line, { start: { x: 0, y: 0 }, end: { x: 90, y: 0 }, controls: null });
+    const { line, points } = headOf({ points: [{ x: 0, y: 0 }, { x: 100, y: 0 }], controls: null }, 10);
+    assert.deepEqual(line, { points: [{ x: 0, y: 0 }, { x: 90, y: 0 }], controls: null });
     assert.deepEqual(points, [{ x: 100, y: 0 }, { x: 90, y: 5 }, { x: 90, y: -5 }]);
   });
 
   test("on a curve, the curve stops at its base, as long before the end, and the head points along the curve", () => {
     // The curve arrives straight down on its end.
-    const { line, points } = headOf({ start: { x: 0, y: 0 }, end: { x: 100, y: 100 }, controls: [{ x: 100, y: 0 }, { x: 100, y: 0 }] }, 10);
+    const { line, points } = headOf({ points: [{ x: 0, y: 0 }, { x: 100, y: 100 }], controls: [[{ x: 100, y: 0 }, { x: 100, y: 0 }]] }, 10);
     close(points[0], { x: 100, y: 100 });
-    close(line.end, { x: 100, y: 90 }, 0.05);
+    close(endOf(line), { x: 100, y: 90 }, 0.05);
     close(points[1], { x: 95, y: 90 }, 0.05);
     close(points[2], { x: 105, y: 90 }, 0.05);
-    close(line.start, { x: 0, y: 0 });
+    close(startOf(line), { x: 0, y: 0 });
   });
 });
 
@@ -211,13 +329,13 @@ describe("a path within a rectangle", () => {
   const rectangle = { x: -10, y: -100, w: 120, h: 110 };
 
   test("is within when all of it is, curve included", () => {
-    assert.equal(pathWithin({ start: { x: 0, y: 0 }, end: { x: 100, y: 0 }, controls: null }, rectangle), true);
-    assert.equal(pathWithin({ start: { x: 0, y: 0 }, end: { x: 100, y: 0 }, controls: [{ x: 0, y: -80 }, { x: 100, y: -80 }] }, rectangle), true);
+    assert.equal(pathWithin({ points: [{ x: 0, y: 0 }, { x: 100, y: 0 }], controls: null }, rectangle), true);
+    assert.equal(pathWithin({ points: [{ x: 0, y: 0 }, { x: 100, y: 0 }], controls: [[{ x: 0, y: -80 }, { x: 100, y: -80 }]] }, rectangle), true);
   });
 
   test("is not when a part of it is out, even if its ends are in", () => {
-    assert.equal(pathWithin({ start: { x: 0, y: 0 }, end: { x: 100, y: 0 }, controls: [{ x: 0, y: -200 }, { x: 100, y: -200 }] }, rectangle), false);
-    assert.equal(pathWithin({ start: { x: 0, y: 0 }, end: { x: 200, y: 0 }, controls: null }, rectangle), false);
+    assert.equal(pathWithin({ points: [{ x: 0, y: 0 }, { x: 100, y: 0 }], controls: [[{ x: 0, y: -200 }, { x: 100, y: -200 }]] }, rectangle), false);
+    assert.equal(pathWithin({ points: [{ x: 0, y: 0 }, { x: 200, y: 0 }], controls: null }, rectangle), false);
   });
 });
 

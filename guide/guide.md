@@ -25,7 +25,7 @@ With the **Arrow** tool, press, drag and release: one gesture draws the arrow, w
 While you draw, the shape under the pointer shows its eight points: its corners and the middles of its sides, on its outline. Each end of the arrow lands where you release it:
 
 - **on a point**, which lights up as you reach it: the end stays on that point, even when the shape turns;
-- **elsewhere on a shape**: the end is automatic, and meets the outline on the way to the other end;
+- **elsewhere on a shape**: the end is automatic, and meets the outline on the way to the next point of the arrow;
 - **on an empty spot**: the end is free, and stays where it is.
 
 The arrow follows its shapes when you move, resize or turn them. Several arrows between the same two shapes are drawn side by side, and arrows that share a point spread out from it, so that each stays visible. Click anywhere on an arrow's line to select it.
@@ -33,6 +33,18 @@ The arrow follows its shapes when you move, resize or turn them. Several arrows 
 A selected arrow shows a handle at each end: drag one onto another point or shape, or onto an empty spot to free it. An arrow whose two ends are free moves when you drag its line. **Detach ends**, in the panel, makes the ends attached to a point automatic.
 
 You cannot attach an arrow to a locked shape: an end released on it stays free.
+
+### Routes and waypoints
+
+In the panel of a selected arrow, choose its route:
+
+- **Straight**: straight lines, from point to point;
+- **Curved**: a smooth curve through its points;
+- **Elbow**: horizontal and vertical segments only, which leave each shape at a right angle to its side.
+
+A selected arrow shows a small square in the middle of each segment. Drag it to add a waypoint there, and give the arrow a corner. On an elbow arrow, dragging the square of a segment between two corners moves that segment sideways. Drag a waypoint to move it: it lines up exactly with its neighbor when you bring it close to the same height or the same column. Double-click a waypoint to remove it, or click **Reset route** to remove them all.
+
+Waypoints stay where you put them when you move a shape: only the segments at the ends of the arrow follow it.
 
 ## Resizing, turning and styling
 
