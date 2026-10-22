@@ -1,5 +1,5 @@
 {
-  "name": "@tessello/diagram",
+  "name": "@craftskillz/diagram",
   "version": "0.1.0",
   "private": true,
   "description": "Diagram: draw shapes and the arrows that connect them, as a Tessello Module.",
