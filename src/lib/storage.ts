@@ -50,6 +50,8 @@ export interface DiagramStorage {
   writeImage(key: string, dataUrl: string, reserve: number): Promise<void>;
   /** Removes images. Throws as `write` does. */
   removeImages(keys: readonly string[]): Promise<void>;
+  /** Whether writing these entries keeps the storage within its quota; reads all of it first when it was not measured. */
+  fits(entries: Iterable<readonly [string, unknown]>): Promise<boolean>;
   /** The bytes used, as last measured; null until all of it is read once. */
   usage(): number | null;
 }
@@ -117,6 +119,10 @@ export function diagramStorage(storage: Storage): DiagramStorage {
       withSaveMessage(async () => {
         for (const key of keys) await remove(key);
       }),
+    fits: async (entries) => {
+      if (!measured) await readAll();
+      return usage.fitsAll(entries);
+    },
     usage: () => (measured ? usage.total() : null),
   };
 }

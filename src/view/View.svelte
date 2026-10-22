@@ -30,6 +30,12 @@
           <button type="button" class="dg-btn" aria-label={t("close")} title={t("close")} onclick={() => (status.imageError = "")}>×</button>
         </div>
       {/if}
+      {#if status.importNotice}
+        <div class="dg-banner dg-notice" role="alert">
+          <p>{status.importNotice}</p>
+          <button type="button" class="dg-btn" aria-label={t("close")} title={t("close")} onclick={() => (status.importNotice = "")}>×</button>
+        </div>
+      {/if}
       {#if status.exportNotice}
         <div class="dg-banner dg-notice" role="alert">
           <p>{status.exportNotice}</p>

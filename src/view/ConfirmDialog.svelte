@@ -8,7 +8,7 @@
   open={pending.question !== null}
   title={pending.question?.title}
   confirmLabel={pending.question?.action}
-  danger
+  danger={pending.question?.danger}
   onConfirm={() => answer(true)}
   onClose={() => answer(false)}
 >

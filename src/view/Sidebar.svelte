@@ -1,11 +1,21 @@
 <script lang="ts">
-  // The list of diagrams: open one, which forgets the links followed, create one, or delete one after a confirmation.
+  // The list of diagrams: open one, which forgets the links followed, create one, import files of living-documentation, or
+  // delete one after a confirmation.
   // Below it, how much of the storage the Module uses, which alerts past `ALERT` of it.
   import { ask } from "../lib/confirmation.svelte.ts";
   import type { DiagramEntry } from "../lib/diagram.ts";
   import { t, titleOf } from "../lib/i18n.ts";
-  import { create, diagrams, openFromList, remove, status } from "../lib/store.svelte.ts";
+  import { create, diagrams, importFiles, openFromList, remove, status } from "../lib/store.svelte.ts";
   import { ALERT, QUOTA, usageText } from "../lib/usage.ts";
+
+  let chooser: HTMLInputElement;
+
+  async function chosen() {
+    const files = [...(chooser.files ?? [])];
+    // Chosen again later, the same files must raise the event again.
+    chooser.value = "";
+    if (files.length) await importFiles(files);
+  }
 
   async function confirmRemove(entry: DiagramEntry) {
     if (await ask(t("confirm_delete_title"), t("confirm_delete_msg", { title: titleOf(entry.title) }))) await remove(entry.id);
@@ -15,7 +25,11 @@
 <nav class="dg-sidebar" aria-label={t("sidebar_title")}>
   <div class="dg-sidebar-head">
     <h2>{t("sidebar_title")}</h2>
-    <button type="button" class="dg-btn" onclick={create}>{t("sidebar_new")}</button>
+    <div class="dg-actions">
+      <button type="button" class="dg-btn" title={t("sidebar_import_hint")} onclick={() => chooser.click()}>{t("sidebar_import")}</button>
+      <button type="button" class="dg-btn" onclick={create}>{t("sidebar_new")}</button>
+    </div>
+    <input bind:this={chooser} type="file" multiple accept=".json,application/json,image/*" hidden onchange={chosen} />
   </div>
   {#if diagrams.list.length === 0}
     <p class="dg-sidebar-empty">{t("sidebar_empty")}</p>
@@ -60,6 +74,10 @@
     align-items: center;
     justify-content: space-between;
     padding: 12px;
+  }
+  .dg-actions {
+    display: flex;
+    gap: 6px;
   }
   h2 {
     margin: 0;

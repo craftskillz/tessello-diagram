@@ -9,17 +9,20 @@
 // shape editor, with the same indicator; they are not part of the undo history of a diagram.
 // Following a link to another diagram keeps the diagrams it came from, which "← Back" opens again; opening a diagram
 // from the list starts over.
+// The files of living-documentation are imported after a confirmation, in one go (lib/import.ts) once they are known to fit.
 // The creation defaults (lib/defaults.ts) are read with the diagrams and saved when they change, with the same
 // indicator; they are not part of the undo history either.
 
 import type { ConnectedModule } from "@tessello/sdk";
 import type { Clip, Style } from "./clipboard.ts";
+import { ask } from "./confirmation.svelte.ts";
 import { type Defaults, factoryDefaults } from "./defaults.ts";
 import { type BuiltInType, type Diagram, type DiagramEntry, newDiagram, newId } from "./diagram.ts";
 import { encodeImage } from "./encoding.ts";
 import type { Point } from "./geometry.ts";
 import { type History, isPresent, record, redo as redoInHistory, snapshotsOf, startHistory, undo as undoInHistory } from "./history.ts";
 import { t, titleOf } from "./i18n.ts";
+import { imagesReferenced, planImport, readImportFile } from "./import.ts";
 import { dropsImage, IMAGE_LIMIT, PLACED_BYTES, placeImage, type Size, unusedImages } from "./images.ts";
 import { diagramsUsing, type ShapeLibrary } from "./library.ts";
 import { type DiagramStorage, diagramStorage, reasonOf } from "./storage.ts";
@@ -37,6 +40,8 @@ export const status = $state({
   saveError: "",
   /** Why the last image could not be inserted, until the User closes the message or inserts another. */
   imageError: "",
+  /** Why a choice of files could not be imported, until the User closes the message or imports again. */
+  importNotice: "",
   /** What an export lost, or why it failed, until the User closes the message or exports again. */
   exportNotice: "",
   /** The shape whose link leads to a diagram that no longer exists, until the User closes the message or removes the link. */
@@ -292,6 +297,69 @@ export async function insertImage(file: Blob, caption: string, at: Point): Promi
     await save();
   } catch (error) {
     status.imageError = (error as Error).message;
+  }
+}
+
+/**
+ * Imports the files of living-documentation chosen: `.diagrams.json`, `.shape-libraries.json` and the pictures they refer
+ * to. A file refused, a choice with nothing to import, or an import that would fill the storage, writes nothing and
+ * tells the User. Otherwise the User confirms the counts, then the images, the libraries and the diagrams are written,
+ * and the first diagram imported opens.
+ */
+export async function importFiles(files: File[]): Promise<void> {
+  if (!status.loaded) return;
+  status.importNotice = "";
+  try {
+    const read = await Promise.all(files.filter((file) => !file.type.startsWith("image/")).map(async (file) => readImportFile(file.name, await file.text())));
+    const refused = read.flatMap((file) => (file.kind === "refused" ? [t(file.reason === "not_json" ? "import_not_json" : "import_not_living_documentation", { name: file.name })] : []));
+    if (refused.length) return void (status.importNotice = refused.join(" "));
+    // Only the pictures the files refer to are reduced and stored; one that cannot be used is a missing image.
+    const referenced = imagesReferenced(read);
+    const encoded = new Map<string, { key: string; dataUrl: string }>();
+    for (const file of files.filter((file) => file.type.startsWith("image/") && referenced.has(file.name))) {
+      try {
+        const image = await encodeImage(file);
+        if (entryBytes(image.key, image.dataUrl) <= IMAGE_LIMIT) encoded.set(file.name, image);
+      } catch {
+        // Told as missing in the confirmation.
+      }
+    }
+    const plan = planImport(read, new Map([...encoded].map(([name, image]) => [name, image.key])), newId, Date.now());
+    if (!plan.diagrams.length && !plan.libraries.length) return void (status.importNotice = t("import_nothing"));
+
+    const list = [...$state.snapshot(diagrams.list), ...plan.diagrams.map(entryOf)];
+    const libraries = [...$state.snapshot(shapeLibraries.list), ...plan.libraries];
+    const pictures = [...new Map([...encoded.values()].map((image) => [image.key, image])).values()];
+    const entries: [string, unknown][] = [
+      ...pictures.map((image): [string, unknown] => [image.key, image.dataUrl]),
+      ["shapes", libraries],
+      ...plan.diagrams.map((diagram): [string, unknown] => [`diagram:${diagram.id}`, diagram]),
+      ["diagrams", list],
+    ];
+    if (!(await queue(() => storage.fits(entries)))) return void (status.importNotice = t("import_quota"));
+
+    const counts = { diagrams: plan.diagrams.length, libraries: plan.libraries.length, shapes: plan.shapes, images: plan.images.length };
+    const missing = plan.missingImages.length ? ` ${t("import_missing", { names: plan.missingImages.join(", ") })}` : "";
+    if (!(await ask(t("import_title"), t("import_counts", counts) + missing, t("import_action"), false))) return;
+
+    for (const image of pictures) images[image.key] = image.dataUrl;
+    diagrams.list = list;
+    shapeLibraries.list = libraries;
+    savedLibraries = JSON.stringify(libraries);
+    const opened = plan.diagrams[0];
+    if (opened) {
+      ui.trail = [];
+      status.missingLink = null;
+      show(opened);
+    }
+    await enqueue(async () => {
+      for (const image of pictures) await storage.writeImage(image.key, image.dataUrl, 0);
+      await storage.writeLibraries(libraries);
+      for (const diagram of plan.diagrams) await storage.write(diagram, list);
+    });
+    await cleanImages();
+  } catch (error) {
+    status.importNotice = t("import_error", { reason: reasonOf(error) });
   }
 }
 

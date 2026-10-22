@@ -28,6 +28,8 @@ export interface StorageUsage {
   total(): number;
   /** Whether writing this value under this key, and `reserve` bytes more, keeps the storage within the quota. */
   fits(key: string, value: unknown, reserve?: number): boolean;
+  /** Whether writing all these entries keeps the storage within the quota. */
+  fitsAll(entries: Iterable<readonly [string, unknown]>): boolean;
 }
 
 /** The usage of the storage, kept up to date by each write and deletion rather than read again. */
@@ -44,6 +46,7 @@ export function storageUsage(): StorageUsage {
     has: (key) => sizes.has(key),
     total,
     fits: (key, value, reserve = 0) => total() - (sizes.get(key) ?? 0) + entryBytes(key, value) + reserve <= QUOTA,
+    fitsAll: (entries) => total() + [...entries].reduce((sum, [key, value]) => sum + entryBytes(key, value) - (sizes.get(key) ?? 0), 0) <= QUOTA,
   };
 }
 

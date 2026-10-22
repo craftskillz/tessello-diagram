@@ -8,6 +8,8 @@ interface Question {
   message: string;
   /** The label of the button that confirms. */
   action: string;
+  /** Whether confirming destroys something, which the button shows. */
+  danger: boolean;
   resolve: (confirmed: boolean) => void;
 }
 
@@ -15,9 +17,9 @@ interface Question {
 export const pending = $state<{ question: Question | null }>({ question: null });
 
 /** Asks the User; resolves with true when they confirm. A deletion is confirmed with "Delete". */
-export function ask(title: string, message: string, action = t("delete")): Promise<boolean> {
+export function ask(title: string, message: string, action = t("delete"), danger = true): Promise<boolean> {
   pending.question?.resolve(false);
-  return new Promise((resolve) => (pending.question = { title, message, action, resolve }));
+  return new Promise((resolve) => (pending.question = { title, message, action, danger, resolve }));
 }
 
 export function answer(confirmed: boolean): void {
