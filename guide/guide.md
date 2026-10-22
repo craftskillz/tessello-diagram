@@ -2,9 +2,28 @@
 
 **Draw architecture and process diagrams: shapes, and the arrows that connect them.**
 
+![A diagram open in the Diagram Module, with the list of diagrams on the left and the tools at the top](images/view.png)
+
 Every change is saved the moment you finish it. There is no Save button.
 
 **Ctrl+Z** (**Cmd+Z** on a Mac) undoes the last change, and **Ctrl+Shift+Z** (**Cmd+Shift+Z**) makes it again. Every change of the diagram can be undone, up to the last 100: shapes, arrows, their style and text, groups, locks, the order, the title, the grid and the guides. Moving around the canvas, zooming and selecting are not changes. The history starts over each time you open a diagram. While you type in a field, these keys undo your typing instead.
+
+## Contents
+
+- [Your diagrams](#your-diagrams)
+- [Drawing](#drawing)
+- [Arrows](#arrows)
+- [Resizing, turning and styling](#resizing-turning-and-styling)
+- [Groups, locks and copies](#groups-locks-and-copies)
+- [Images](#images)
+- [Custom shapes](#custom-shapes)
+- [Links](#links)
+- [Grid, guides and zoom](#grid-guides-and-zoom)
+- [Bring your diagrams from living-documentation](#bring-your-diagrams-from-living-documentation)
+- [Export](#export)
+- [Storage and your data](#storage-and-your-data)
+- [Keyboard shortcuts](#keyboard-shortcuts)
+- [When something goes wrong](#when-something-goes-wrong)
 
 ## Your diagrams
 
@@ -13,6 +32,8 @@ The list on the left holds your diagrams. Click **+ New** to create one: it open
 To delete a diagram, point at it in the list and click **×**, then confirm. A deleted diagram cannot be brought back.
 
 On the Home, the Diagram Widget lists the four diagrams you changed last, with how long ago. Click one to open it, or **+ New** to open a new diagram.
+
+![The Diagram Widget on the Home, listing three diagrams](images/widget.png)
 
 ## Drawing
 
@@ -34,6 +55,8 @@ While you draw, the shape under the pointer shows its eight points: its corners 
 - **on an empty spot**: the end is free, and stays where it is.
 
 The arrow follows its shapes when you move, resize or turn them. Several arrows between the same two shapes are drawn side by side, and arrows that share a point spread out from it, so that each stays visible. Click anywhere on an arrow's line to select it.
+
+![A selected dashed arrow, with a handle at each end, the square in the middle of its line, and its label moved aside](images/arrow.png)
 
 A selected arrow shows a handle at each end: drag one onto another point or shape, or onto an empty spot to free it. An arrow whose two ends are free moves when you drag its line. **Detach ends**, in the panel, makes the ends attached to a point automatic.
 
@@ -99,6 +122,8 @@ Click **Shapes** in the toolbar to open the shape editor, and **← Back to diag
 
 Click **New shape** and choose its **Image**: the shape is saved as soon as it has one, and every change after that is saved as you make it. Give it a name, a width and a height (16 to 1200), and choose where its text goes: below, above, to the right, to the left, or centered on the picture.
 
+![The shape editor, with a Server shape and its eight anchors around its picture](images/shapes.png)
+
 Its anchors are the points where arrows attach to it. Click the preview to add one, drag it to move it, and rename or remove it in the list; two anchors never share a name. **Use 8 default anchors** puts back the corners and the middles of the sides. **Clear anchors** leaves none: arrows then attach to the shape automatically only.
 
 The shapes ticked **Show in diagram palette** appear at the bottom of the canvas. Click one, then double-click the canvas to place it, at its size and with its name as its text. The panel changes where its text goes on that shape alone. A change made in the editor, to its picture or its anchors, shows on every shape already placed; untick **Show in diagram palette** to stop offering it without changing them.
@@ -121,6 +146,24 @@ A shape you move snaps to the **Grid**, every 20 units; press **G** or click **G
 
 To move around the canvas, use the wheel, or drag while holding **Space** or the middle button. **Ctrl+wheel** (**Cmd+wheel** on a Mac) zooms, as do the **−** and **+** buttons at the bottom left, beside the zoom level. **Fit** shows the whole drawing.
 
+## Bring your diagrams from living-documentation
+
+The diagrams you drew in the editor of living-documentation can come with you. Its project folder holds them in two files, `.diagrams.json` for the diagrams and `.shape-libraries.json` for the libraries of custom shapes, and their pictures in its `images/` folder.
+
+Click **Import**, above the list of diagrams, and choose these files together: one or both JSON files, and the pictures they use. Pick every file of `images/` if you are not sure which ones are used: those the diagrams do not use are left out.
+
+![The confirmation of an import, with the number of diagrams, libraries, custom shapes and images](images/import.png)
+
+Before anything is written, a confirmation tells you how many diagrams, libraries, custom shapes and images will be imported, and names the pictures that the diagrams use but that you did not choose. Click **Import** to go on, or **Cancel** to import nothing. The first imported diagram then opens.
+
+The import adds to what you have, and never replaces it: each diagram gets a new identity, even one you already imported, and links between the imported diagrams lead to their new copies. Shapes, arrows, their style and text, groups, locks, links, the grid and the guides are all kept. An arrow that ends on an anchor node of living-documentation gets a free end there, and the curves of the original become the **Curved** route. A picture you did not choose shows as a **missing image** frame.
+
+Nothing is imported when:
+
+- you chose only pictures, or files that hold no diagram and no library: the message says there is nothing to import;
+- a file is not JSON, or is neither a `.diagrams.json` nor a `.shape-libraries.json` file: the message names it;
+- the import would fill the storage: delete pictures or diagrams you no longer need, or import fewer files at once.
+
 ## Export
 
 **PNG**, in the toolbar, or **Ctrl+Shift+E** (**Cmd+Shift+E** on a Mac), downloads the selected shapes as an image, with the arrows between them, or the whole diagram when nothing is selected. It is drawn from the diagram itself, so what is outside the view is included, at twice its size for sharpness. Its background is that of the current theme; turn on **Transparent** to leave it out.
@@ -129,15 +172,45 @@ To move around the canvas, use the wheel, or drag while holding **Space** or the
 
 The file is named after the diagram's title. Exporting does not change the diagram.
 
-## Your data
+## Storage and your data
 
 Your diagrams and their pictures are kept in Tessello's storage on your computer, and nowhere else. The Diagram Module contacts no server. Uninstalling it deletes your diagrams.
 
-The gauge below the list of diagrams, **Storage: x.x MB / 5 MB**, shows how much of its storage the Module uses; it turns red past 80%. Pictures take most of it. A picture is removed from the storage once no diagram uses it, and it can no longer be brought back by **Ctrl+Z**: when you open another diagram, or the next time the Diagram Module starts.
+The Module has 5 MB of storage for everything: your diagrams, your libraries of shapes, and the pictures of your images and custom shapes. Pictures take most of it: shapes and arrows take little room, but a single picture can take up to about 900 KB.
+
+The gauge below the list of diagrams, **Storage: x.x MB / 5 MB**, shows how much of it the Module uses; it turns red past 80%. When the storage is full, a change cannot be saved, and a picture or an import that would not fit is refused. To make room, delete the pictures, custom shapes or diagrams you no longer need.
+
+A picture is removed from the storage once no diagram uses it, and it can no longer be brought back by **Ctrl+Z**: when you open another diagram, or the next time the Diagram Module starts. A picture placed several times is stored only once.
+
+## Keyboard shortcuts
+
+On a Mac, use **Cmd** for **Ctrl** and **Option** for **Alt**. The shortcuts do not work while you type in a text, a field or a dialog.
+
+| Keys | What they do |
+|---|---|
+| **S**, **R**, **E**, **D**, **C**, **A**, **P**, **T**, **F**, **I** | Select, Rectangle, Ellipse, Database, Circle, Actor, Post-it, Free text, Arrow, Image |
+| **Escape** | Back to Select, with nothing selected |
+| **Ctrl+A** | Select everything that is not locked |
+| **Ctrl+click** | Add a shape or an arrow to the selection, or take it out |
+| **Alt+click** | Select a member of a group alone |
+| **Shift+click** | Follow the link of a shape |
+| **Delete** or **Backspace** | Delete the selection; the arrows of a deleted shape stay, with free ends |
+| **Ctrl+Delete** | Delete the selection, with the arrows of its shapes |
+| **Ctrl+C**, **Ctrl+V** | Copy the selection, paste it; paste a copied picture |
+| **Ctrl+Alt+C**, **Ctrl+Alt+V** | Copy the style of the selection, paste it |
+| **Ctrl+Z**, **Ctrl+Shift+Z** | Undo, redo |
+| **G** | Turn the grid off or on |
+| **Ctrl+Shift+E** | Export the selection, or the whole diagram, as a PNG |
+| **Space** + drag, or middle button + drag | Move around the canvas |
+| **Ctrl+wheel** | Zoom |
+| **Shift** while drawing an arrow | Keep it at a multiple of 45° |
+| **Shift** while resizing or turning | Keep the proportions, turn by steps of 15° |
+| **Enter**, **Shift+Enter**, **Escape** in a text | Apply it, add a line, abandon it |
 
 ## When something goes wrong
 
 - **Save failed**: your last change is still on screen, but it is not saved and will be lost when you leave. The message tells you why; when the storage is full, delete pictures or diagrams you no longer need.
 - **Diagram not found**: the diagram a shape leads to was deleted. Click **Remove link**, or link the shape to another diagram.
 - **The export failed**: no file was downloaded. The message tells you why; try again.
+- **The import failed**: the message tells you why. Part of the import may have been saved: look at the list of diagrams before you try again, since an import adds copies and never replaces what is there. See also [Bring your diagrams from living-documentation](#bring-your-diagrams-from-living-documentation).
 - **Your diagrams could not be read**: nothing can be changed until they are read, so that nothing is lost. Click **Try again**.
