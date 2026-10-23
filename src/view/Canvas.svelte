@@ -3,11 +3,11 @@
   // finds both come from the shapes and arrows, through lib/geometry.ts and lib/arrows.ts. A gesture changes the model
   // as it goes and saves it when it ends. Shift+click on a shape follows its link, and "← Back" returns from a diagram
   // reached that way.
-  import { anchorOf, arrowAt, constrainAngle, endAt, endOf, isDrawable, isShiftable, labelPlacement, labelPoint, layoutArrows, middlesOf, type Path, pathData, pathWithin, shiftSegment, snapWaypoint, startOf } from "../lib/arrows.ts";
+  import { anchorOf, arrowAt, constrainAngle, distanceTo, endAt, endOf, isDrawable, isShiftable, labelPlacement, labelPoint, layoutArrows, middlesOf, type Path, pathData, pathWithin, shiftSegment, snapWaypoint, startOf } from "../lib/arrows.ts";
   import { applyStyle, copyItems, copyStyle, pasteItems } from "../lib/clipboard.ts";
   import { createArrow, createShape } from "../lib/defaults.ts";
   import { type Arrow, type Diagram, keepsRatio, type ShapeLink, newId, nextZ, removeShape, type Shape, withGroups } from "../lib/diagram.ts";
-  import { type Box, boxWithin, type Corner, cornersOf, cornerSign, degrees, type Endpoint, isAttached, type Point, portPoint, portsOf, resizeBox, shapeAt } from "../lib/geometry.ts";
+  import { type Box, boxWithin, CONNECTION_DIRECTIONS, type ConnectionDirection, connectionHandlePoint, connectionPort, type Corner, cornersOf, cornerSign, degrees, type Endpoint, isAttached, type Point, portPoint, portsOf, resizeBox, shapeAt } from "../lib/geometry.ts";
   import { t, titleOf } from "../lib/i18n.ts";
   import { alignment, type Bounds, boundsOf, fitView, GRID, type Guide, pointsBounds, scaleBoxes, snapToGrid } from "../lib/placement.ts";
   import { captionOf } from "../lib/images.ts";
@@ -49,6 +49,8 @@
   let pan = $state({ x: 0, y: 0 });
   let zoom = $state(1);
   let spaceHeld = false;
+  let capturedPointer: number | null = null;
+  let hoveredId = $state<string | null>(null);
 
   /** Where a free arrow was when a move started: its ends and its waypoints. */
   type Line = { id: string; from: Point; to: Point; waypoints: Point[] };
@@ -154,6 +156,21 @@
   }
   /** The shape that shows the handles to resize and turn it: a single selected shape, unless it is locked. */
   const withHandles = $derived(selectedShapes.length === 1 && !editing && !selectedShapes[0].locked ? selectedShapes[0] : undefined);
+  /** Hover wins over the single selection; multiple selections never offer connection handles. */
+  const connectionSource = $derived.by(() => {
+    if (ui.tool !== "select" || editing || gesture || ui.selection.length > 1) return undefined;
+    const shape = (hoveredId ? shapes.get(hoveredId) : undefined) ?? (ui.selection.length === 1 ? selectedShapes[0] : undefined);
+    return shape && !shape.locked ? shape : undefined;
+  });
+
+  /** The corridor from each side to its handle keeps a hovered source reachable without a timer. */
+  function overConnectionHandle(shape: Shape, at: Point): boolean {
+    return CONNECTION_DIRECTIONS.some((direction) => {
+      const side = portPoint(shape.type === "custom" ? { ...shape, type: undefined } : shape, direction);
+      const handle = connectionHandlePoint(shape, direction, zoom);
+      return distanceTo({ points: [side, handle], controls: null }, at) <= reach(9);
+    });
+  }
 
   // The images the diagram shows, its custom shapes and the palette included, are read from the storage once.
   $effect(() => {
@@ -167,6 +184,7 @@
   $effect(() => {
     void diagram.id;
     ui.selection = [];
+    hoveredId = null;
     editing = null;
     zoom = 1;
     if (svg) pan = { x: svg.clientWidth / 2, y: svg.clientHeight / 2 };
@@ -178,9 +196,28 @@
   }
 
   function capture(event: PointerEvent, started: Gesture) {
+    if (spaceHeld && event.button === 0) started = { kind: "pan", from: { x: event.clientX, y: event.clientY }, pan: { ...pan } };
     event.stopPropagation();
     gesture = started;
+    capturedPointer = event.pointerId;
     svg!.setPointerCapture(event.pointerId);
+  }
+
+  function releaseCapture() {
+    if (capturedPointer !== null && svg?.hasPointerCapture(capturedPointer)) svg.releasePointerCapture(capturedPointer);
+    capturedPointer = null;
+  }
+
+  function cancelGesture() {
+    gesture = null;
+    guides = [];
+    releaseCapture();
+  }
+
+  function startConnection(event: PointerEvent, shape: Shape, direction: ConnectionDirection) {
+    if (event.button !== 0 || spaceHeld) return;
+    const outline = outlines.get(shape.id)!;
+    capture(event, { kind: "draw", from: { shapeId: shape.id, port: connectionPort(outline, direction) }, press: { x: event.clientX, y: event.clientY }, at: toDrawing(event), moved: false });
   }
 
   function onPointerDown(event: PointerEvent) {
@@ -257,7 +294,12 @@
   function onPointerMove(event: PointerEvent) {
     // Off the canvas, no port is shown, unless a gesture goes on.
     if (svg) pointer = gesture || svg.contains(event.target as Node) ? toDrawing(event) : null;
-    if (!gesture) return;
+    if (!gesture) {
+      const front = pointer ? shapeAt(diagram.shapes, pointer) : undefined;
+      const previous = hoveredId ? shapes.get(hoveredId) : undefined;
+      hoveredId = front?.id ?? (pointer && previous && overConnectionHandle(previous, pointer) ? previous.id : null);
+      return;
+    }
     if (gesture.kind === "pan") {
       pan = { x: gesture.pan.x + event.clientX - gesture.from.x, y: gesture.pan.y + event.clientY - gesture.from.y };
       return;
@@ -390,13 +432,19 @@
     const ended = gesture;
     gesture = null;
     guides = [];
+    releaseCapture();
     if (!ended) return;
+    hoveredId = shapeAt(diagram.shapes, toDrawing(event))?.id ?? null;
+    if (ended.kind === "draw") {
+      const at = toDrawing(event);
+      ended.at = event.shiftKey ? constrainAngle(anchorOf(outlines, ended.from), at) : at;
+    }
     if (ended.kind !== "draw" && "moved" in ended && ended.moved) void save();
     // A click without a drag on an item of the selection selects it alone, with its group unless Alt is held.
     if ((ended.kind === "move" || ended.kind === "label") && !ended.moved && !event.ctrlKey && !event.metaKey)
       ui.selection = event.altKey ? [ended.id] : withGroups(diagram, [ended.id]);
     // A click without a drag draws nothing.
-    if (ended.kind === "draw" && ended.moved) {
+    if (ended.kind === "draw" && ended.moved && Math.hypot(event.clientX - ended.press.x, event.clientY - ended.press.y) >= DRAG) {
       const arrow = createArrow(creation.defaults, newId("arrow"), ended.from, endingAt(ended.from, ended.at), nextZ(diagram));
       diagram.arrows.push(arrow);
       ui.selection = [arrow.id];
@@ -579,6 +627,10 @@
       diagram.grid = !diagram.grid;
       void save();
     } else if (event.key === "Escape") {
+      if (gesture?.kind === "draw") {
+        event.preventDefault();
+        return cancelGesture();
+      }
       ui.tool = "select";
       ui.selection = [];
     } else if (!event.ctrlKey && !event.metaKey && !event.altKey && TOOL_KEYS[key]) ui.tool = TOOL_KEYS[key];
@@ -713,7 +765,7 @@
   onpaste={onPaste}
   onpointermove={onPointerMove}
   onpointerup={onPointerUp}
-  onpointercancel={() => (gesture = null)}
+  onpointercancel={cancelGesture}
 />
 
 <div class="dg-canvas">
@@ -725,6 +777,7 @@
     class:panning={gesture?.kind === "pan"}
     class:over-arrow={overArrow}
     onpointerdown={onPointerDown}
+    onpointerleave={() => { if (!gesture) { pointer = null; hoveredId = null; } }}
     onmousedown={(event) => event.button === 1 && event.preventDefault()}
     ondblclick={onDoubleClick}
     onwheel={onWheel}
@@ -770,7 +823,7 @@
       {/each}
 
       {#if gesture?.kind === "draw" && gesture.moved}
-        {@const preview = layoutArrows(outlines, [{ id: "", from: gesture.from, to: endingAt(gesture.from, gesture.at), route: "straight" }]).get("")}
+        {@const preview = layoutArrows(outlines, [{ id: "", from: gesture.from, to: endingAt(gesture.from, gesture.at), route: creation.defaults.arrows.route }]).get("")}
         {#if preview}
           <path class="dg-arrow-preview" d={pathData(preview)} stroke-width={2 / zoom} />
         {/if}
@@ -916,6 +969,24 @@
             stroke-width={1.5 / zoom}
             onpointerdown={(event) => startResizeGroup(event, bounds, corner)}
           />
+        {/each}
+      {/if}
+
+      {#if connectionSource}
+        {#each CONNECTION_DIRECTIONS as direction, index (direction)}
+          {@const at = connectionHandlePoint(connectionSource, direction, zoom)}
+          <g
+            role="button"
+            tabindex="-1"
+            aria-label={t(`connect_${direction}`)}
+            class="dg-connect"
+            transform="translate({at.x} {at.y}) rotate({connectionSource.rotation + index * 90}) scale({1 / zoom})"
+            onpointerdown={(event) => startConnection(event, connectionSource, direction)}
+          >
+            <title>{t(`connect_${direction}`)}</title>
+            <circle r="9" />
+            <path d="M0,-6L5,0H2V5H-2V0H-5Z" />
+          </g>
         {/each}
       {/if}
 
@@ -1112,6 +1183,21 @@
   }
   .dg-stem {
     stroke: var(--accent);
+    pointer-events: none;
+  }
+  .dg-connect {
+    cursor: crosshair;
+    outline: none;
+  }
+  .dg-connect circle {
+    fill: transparent;
+    pointer-events: all;
+  }
+  .dg-connect path {
+    fill: var(--accent);
+    stroke: var(--bg);
+    stroke-width: 1;
+    pointer-events: none;
   }
   .dg-handle {
     fill: var(--bg);

@@ -85,6 +85,10 @@ const en = {
   resize_se: "Resize from the bottom-right corner",
   resize_sw: "Resize from the bottom-left corner",
   rotate_handle: "Rotate the shape",
+  connect_N: "Draw arrow from top",
+  connect_E: "Draw arrow from right",
+  connect_S: "Draw arrow from bottom",
+  connect_W: "Draw arrow from left",
   rotate_text_handle: "Rotate the text",
 
   shape_panel: "Shape style",
@@ -371,6 +375,10 @@ const fr: Messages = {
   resize_se: "Redimensionner par le coin inférieur droit",
   resize_sw: "Redimensionner par le coin inférieur gauche",
   rotate_handle: "Tourner la forme",
+  connect_N: "Tirer une flèche depuis le haut",
+  connect_E: "Tirer une flèche depuis la droite",
+  connect_S: "Tirer une flèche depuis le bas",
+  connect_W: "Tirer une flèche depuis la gauche",
   rotate_text_handle: "Tourner le texte",
 
   shape_panel: "Style de la forme",

@@ -46,6 +46,12 @@ Pick a tool at the top, or press its key:
 
 ## Arrows
 
+With **Select (S)**, hover a shape to discover four small directional arrow handles outside its sides. A shape selected alone also keeps its handles available. Drag one to another shape or an empty spot, then release: the new arrow is selected and Select stays active. Its start attaches to the corresponding point on the source's outline, following its rotation. The body of the shape still moves it. Handles are hidden for locked shapes, multiple selections, text editing and other tools; **Alt+click** selects a single member of a group so you can pull from that member.
+
+On a custom shape, each handle uses the existing anchor nearest that side's midpoint in the definition's normalized coordinates. Ties use the first anchor in the definition, and several handles may use the same anchor. The preview starts at that actual anchor. Without anchors, or when its definition has been deleted, the start attaches automatically and its exit follows the destination.
+
+The preview uses the current default route. **Shift** constrains the direction to steps of 45°. A click or a release less than 3 screen pixels from the press creates nothing. **Escape** or a cancelled pointer abandons the preview, keeping your selection and data. **Ctrl+Z** (**Cmd+Z**) removes a completed arrow in one step; redo restores it.
+
 With the **Arrow** tool, press, drag and release: one gesture draws the arrow, wherever it starts. **Shift** keeps it at a multiple of 45°. A click without a drag draws nothing.
 
 While you draw, the shape under the pointer shows its eight points: its corners and the middles of its sides, on its outline. Each end of the arrow lands where you release it:

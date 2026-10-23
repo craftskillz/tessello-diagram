@@ -98,6 +98,32 @@ export function outlinePoint(shape: Outlined, toward: Point): Point {
 /** The ports of the built-in shapes, from north clockwise. */
 export const PORTS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"] as const;
 
+/** The four directions offered by the Select tool, in the frame of the shape. */
+export const CONNECTION_DIRECTIONS = ["N", "E", "S", "W"] as const;
+export type ConnectionDirection = (typeof CONNECTION_DIRECTIONS)[number];
+
+/** A connection handle sits outside the local box, 14 screen pixels from its side, regardless of zoom. */
+export function connectionHandlePoint(box: Box, direction: ConnectionDirection, zoom: number): Point {
+  return portPoint({ x: box.x, y: box.y, w: box.w + 28 / zoom, h: box.h + 28 / zoom, rotation: box.rotation }, direction);
+}
+
+/** The existing port used when pulling a connection from a side of a shape. */
+export function connectionPort(shape: Outlined, direction: ConnectionDirection): string | null {
+  if (shape.type !== "custom") return direction;
+  const side = PORT_SIDES[direction];
+  const target = { x: (side.x + 1) / 2, y: (side.y + 1) / 2 };
+  let nearest: Anchor | undefined;
+  let distance = Infinity;
+  for (const anchor of shape.anchors ?? []) {
+    const next = Math.hypot(anchor.x - target.x, anchor.y - target.y);
+    if (next < distance) {
+      nearest = anchor;
+      distance = next;
+    }
+  }
+  return nearest?.id ?? null;
+}
+
 /** The direction of each port from the center, in the frame of the shape: x right, y down. */
 const PORT_SIDES: Record<string, Point> = {
   N: { x: 0, y: -1 },

@@ -1,12 +1,47 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { arrowHead, boxWithin, degrees, outlinePoint, portPoint, portsOf, resizeBox, shapeAt } from "../src/lib/geometry.ts";
+import { arrowHead, boxWithin, connectionHandlePoint, connectionPort, degrees, outlinePoint, portPoint, portsOf, resizeBox, shapeAt } from "../src/lib/geometry.ts";
 
 const box = { x: 0, y: 0, w: 100, h: 40, rotation: 0 };
+
+test("directional connections use the cardinal ports of every built-in shape and image", () => {
+  for (const type of ["rect", "ellipse", "database", "circle", "actor", "postit", "text", "image"] as const) {
+    for (const direction of ["N", "E", "S", "W"] as const) {
+      assert.equal(connectionPort({ ...box, type, rotation: 90 }, direction), direction);
+    }
+  }
+});
+
+test("custom connections choose existing anchors by normalized distance, keeping definition order on ties", () => {
+  const custom = { ...box, type: "custom" as const, w: 800, h: 20, rotation: 90, anchors: [
+    { id: "inlet", x: 0.25, y: 0.1 }, { id: "outlet", x: 0.9, y: 0.4 },
+    { id: "drain", x: 0.6, y: 0.9 }, { id: "west", x: 0.1, y: 0.6 },
+  ] };
+  assert.deepEqual((["N", "E", "S", "W"] as const).map((side) => connectionPort(custom, side)), ["inlet", "outlet", "drain", "west"]);
+  const tied = { ...custom, anchors: [{ id: "first", x: 0.25, y: 0 }, { id: "second", x: 0.75, y: 0 }] };
+  assert.equal(connectionPort(tied, "N"), "first");
+  for (const side of ["N", "E", "S", "W"] as const) {
+    assert.equal(connectionPort({ ...custom, anchors: [{ id: "only", x: 0.2, y: 0.3 }] }, side), "only");
+    assert.equal(connectionPort({ ...custom, anchors: [] }, side), null);
+    assert.equal(connectionPort({ ...box, type: "custom" }, side), null);
+  }
+  // In drawing coordinates the first is much nearer N; normalized coordinates choose the second.
+  assert.equal(connectionPort({ ...custom, anchors: [{ id: "near-in-pixels", x: 0.5, y: 0.4 }, { id: "near-normalized", x: 0.7, y: 0 }] }, "N"), "near-normalized");
+});
 
 const close = (actual: { x: number; y: number }, expected: { x: number; y: number }) => {
   assert.ok(Math.abs(actual.x - expected.x) < 1e-9 && Math.abs(actual.y - expected.y) < 1e-9, `${JSON.stringify(actual)} ≠ ${JSON.stringify(expected)}`);
 };
+
+test("connection handles follow the rotated box with a constant 14 screen pixel gap at every zoom", () => {
+  for (const zoom of [0.1, 1, 4]) {
+    close(connectionHandlePoint(box, "N", zoom), { x: 0, y: -20 - 14 / zoom });
+    close(connectionHandlePoint({ ...box, rotation: 90 }, "E", zoom), { x: 0, y: 50 + 14 / zoom });
+    close(connectionHandlePoint(box, "S", zoom), { x: 0, y: 20 + 14 / zoom });
+    close(connectionHandlePoint(box, "W", zoom), { x: -50 - 14 / zoom, y: 0 });
+  }
+  close(portPoint({ ...box, rotation: 90 }, connectionPort(box, "N")!), { x: 20, y: 0 });
+});
 
 describe("where a segment from the center of a rectangle leaves its outline", () => {
   test("toward a point on the right, it leaves by the middle of the right side", () => {
