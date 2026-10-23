@@ -7,7 +7,7 @@
   import { applyStyle, copyItems, copyStyle, pasteItems } from "../lib/clipboard.ts";
   import { createArrow, createShape } from "../lib/defaults.ts";
   import { type Arrow, type Diagram, keepsRatio, type ShapeLink, newId, nextZ, removeShape, type Shape, withGroups } from "../lib/diagram.ts";
-  import { type Box, boxWithin, CONNECTION_DIRECTIONS, type ConnectionDirection, connectionHandlePoint, connectionPort, type Corner, cornersOf, cornerSign, degrees, type Endpoint, isAttached, type Point, portPoint, portsOf, resizeBox, shapeAt } from "../lib/geometry.ts";
+  import { type Box, boxWithin, CONNECTION_DIRECTIONS, type ConnectionDirection, connectionHandlePoint, connectionPort, contains, type Corner, cornersOf, cornerSign, degrees, type Endpoint, isAttached, type Point, portPoint, portsOf, resizeBox, shapeAt } from "../lib/geometry.ts";
   import { t, titleOf } from "../lib/i18n.ts";
   import { alignment, type Bounds, boundsOf, fitView, GRID, type Guide, pointsBounds, scaleBoxes, snapToGrid } from "../lib/placement.ts";
   import { captionOf } from "../lib/images.ts";
@@ -295,9 +295,12 @@
     // Off the canvas, no port is shown, unless a gesture goes on.
     if (svg) pointer = gesture || svg.contains(event.target as Node) ? toDrawing(event) : null;
     if (!gesture) {
+      // A handle and its approach corridor win over a neighbor beneath them. Inside shapes, frontmost still wins.
+      const handleSource = event.target instanceof Element ? event.target.closest(".dg-connect")?.getAttribute("data-source") : null;
       const front = pointer ? shapeAt(diagram.shapes, pointer) : undefined;
       const previous = hoveredId ? shapes.get(hoveredId) : undefined;
-      hoveredId = front?.id ?? (pointer && previous && overConnectionHandle(previous, pointer) ? previous.id : null);
+      const corridorSource = pointer && previous && !contains(previous, pointer) && overConnectionHandle(previous, pointer) ? previous.id : null;
+      hoveredId = handleSource ?? corridorSource ?? front?.id ?? null;
       return;
     }
     if (gesture.kind === "pan") {
@@ -980,6 +983,7 @@
             tabindex="-1"
             aria-label={t(`connect_${direction}`)}
             class="dg-connect"
+            data-source={connectionSource.id}
             transform="translate({at.x} {at.y}) rotate({connectionSource.rotation + index * 90}) scale({1 / zoom})"
             onpointerdown={(event) => startConnection(event, connectionSource, direction)}
           >
