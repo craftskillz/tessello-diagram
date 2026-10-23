@@ -772,6 +772,7 @@
 />
 
 <div class="dg-canvas">
+  <!-- svelte-ignore a11y_no_noninteractive_element_interactions (The application canvas handles shortcuts on svelte:window; mousedown only prevents native middle-click scrolling while panning.) -->
   <svg
     bind:this={svg}
     role="application"

@@ -1,6 +1,6 @@
 {
   "name": "@craftskillz/diagram",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Diagram: draw shapes and the arrows that connect them, as a Tessello Module.",
   "license": "MIT",

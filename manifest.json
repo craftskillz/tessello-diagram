@@ -2,7 +2,7 @@
   "convention": 1,
   "id": "@craftskillz/diagram",
   "name": "Diagram",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Draw architecture and process diagrams: shapes, and the arrows that connect them.",
   "icon": "icon.svg",
   "view": {
