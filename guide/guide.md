@@ -220,3 +220,7 @@ On a Mac, use **Cmd** for **Ctrl** and **Option** for **Alt**. The shortcuts do 
 - **The export failed**: no file was downloaded. The message tells you why; try again.
 - **The import failed**: the message tells you why. Part of the import may have been saved: look at the list of diagrams before you try again, since an import adds copies and never replaces what is there. See also [Bring your diagrams from living-documentation](#bring-your-diagrams-from-living-documentation).
 - **Your diagrams could not be read**: nothing can be changed until they are read, so that nothing is lost. Click **Try again**.
+
+## About Diagram
+
+Diagram is a Module of [Tessello](https://github.com/craftskillz/tessello), published by @craftskillz under the MIT license. Its sources, its versions and its issues are at https://github.com/craftskillz/tessello-diagram.
