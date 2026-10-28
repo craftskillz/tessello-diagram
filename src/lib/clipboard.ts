@@ -62,9 +62,10 @@ export function pasteItems(diagram: Diagram, clip: Clip, offset: number, idOf: (
   return [...shapes, ...arrows].map((item) => item.id);
 }
 
-/** A copied style: of a shape, with its size when asked, or of an arrow. It applies to what is of the same kind. */
+/** A copied style: of a shape, with its size when asked, or of an arrow. It applies to what is of the same kind. The bold,
+ * italic and underline of a table go to tables alone. */
 export type Style =
-  | { kind: "shape"; values: Partial<Pick<Shape, "color" | "opacity" | "fontSize" | "textAlign" | "textValign" | "w" | "h">> }
+  | { kind: "shape"; values: Partial<Pick<Shape, "color" | "opacity" | "fontSize" | "textAlign" | "textValign" | "w" | "h">>; emphasis?: Required<Pick<Shape, "bold" | "italic" | "underline">> }
   | { kind: "arrow"; values: Pick<Arrow, "heads" | "dashed" | "width" | "color" | "labelSize" | "route"> };
 
 const isArrow = (item: Shape | Arrow): item is Arrow => "from" in item;
@@ -76,10 +77,13 @@ export function copyStyle(item: Shape | Arrow, withSize: boolean): Style {
     return { kind: "arrow", values: { heads, dashed, width, color, labelSize, route } };
   }
   const { color, opacity, fontSize, textAlign, textValign, w, h } = item;
-  return { kind: "shape", values: withSize ? { color, opacity, fontSize, textAlign, textValign, w, h } : { color, opacity, fontSize, textAlign, textValign } };
+  const values = withSize ? { color, opacity, fontSize, textAlign, textValign, w, h } : { color, opacity, fontSize, textAlign, textValign };
+  if (item.type !== "table") return { kind: "shape", values };
+  return { kind: "shape", values, emphasis: { bold: item.bold === true, italic: item.italic === true, underline: item.underline === true } };
 }
 
 /** "Paste style": applies a copied style to the shapes, or to the arrows, as it was copied from one or the other. */
 export function applyStyle(style: Style, shapes: readonly Shape[], arrows: readonly Arrow[]): void {
-  for (const item of style.kind === "shape" ? shapes : arrows) Object.assign(item, style.values);
+  if (style.kind === "arrow") return void arrows.forEach((arrow) => Object.assign(arrow, style.values));
+  for (const shape of shapes) Object.assign(shape, style.values, shape.type === "table" ? style.emphasis : undefined);
 }

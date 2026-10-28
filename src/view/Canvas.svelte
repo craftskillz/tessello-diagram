@@ -1459,10 +1459,10 @@
   .resize-side-ew {
     cursor: ew-resize;
   }
-  /* The hit zone of a column separator: invisible, but it takes the pointer along the whole height. */
   .dg-pick {
     cursor: pointer;
   }
+  /* The hit zone of a column separator: invisible, but it takes the pointer along the whole height. */
   .dg-separator {
     fill: transparent;
     cursor: col-resize;

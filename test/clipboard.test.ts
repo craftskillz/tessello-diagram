@@ -114,6 +114,15 @@ describe("copying a style", () => {
     );
   });
 
+  test("a table gives its bold, italic and underline to the tables it is pasted on, and to them alone", () => {
+    const source = { ...newShape("s", { x: 0, y: 0 }, 0, "table"), bold: true, underline: true };
+    const target = { ...newShape("t", { x: 500, y: 0 }, 1, "table"), italic: true };
+    const shape = newShape("r", { x: 0, y: 200 }, 2);
+    applyStyle(copyStyle(source, false), [target, shape], []);
+    assert.deepEqual([target.bold, target.italic, target.underline], [true, false, true]);
+    assert.deepEqual([shape.bold, shape.italic, shape.underline], [undefined, undefined, undefined]);
+  });
+
   test("applies only to what is of the same kind", () => {
     const arrowStyle = copyStyle({ ...newArrow("a", { x: 0, y: 0 }, { x: 10, y: 0 }, 0), color: "c-red" }, false);
     const shape = newShape("s", { x: 0, y: 0 }, 0);
