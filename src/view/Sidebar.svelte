@@ -73,12 +73,11 @@
     background: var(--panel);
     overflow-y: auto;
   }
+  /* Two lines: the title with the toggle at its right end, then the buttons. */
   .dg-sidebar-head {
     display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    justify-content: space-between;
-    gap: 8px 6px;
+    flex-direction: column;
+    gap: 10px;
     padding: 12px;
   }
   .dg-sidebar[hidden] {
@@ -87,12 +86,18 @@
   .dg-sidebar-title {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 6px;
     min-width: 0;
   }
+  /* A button too wide for the rest of the line goes below, whole, rather than break its words. */
   .dg-actions {
     display: flex;
+    flex-wrap: wrap;
     gap: 6px;
+  }
+  .dg-actions .dg-btn {
+    white-space: nowrap;
   }
   h2 {
     margin: 0;
@@ -182,6 +187,10 @@
   @media (max-width: 600px) {
     .dg-sidebar {
       width: 150px;
+    }
+    /* “Import” and “+ New” need the room of the padding to share the line; in French, “+ Nouveau” still goes below. */
+    .dg-actions .dg-btn {
+      padding-inline: 6px;
     }
   }
 </style>

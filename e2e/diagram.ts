@@ -71,15 +71,17 @@ interface Opened {
 /** A Test Host for Diagram, under the Identifier of its Manifest. */
 export const diagramHost = (options: Omit<TestHostOptions, "module"> = {}) => createTestHost({ module, ...options });
 
-type OpenOptions = Pick<TestHostOptions, "storage" | "theme"> & { host?: TestHost; params?: Record<string, string> };
+type OpenOptions = Pick<TestHostOptions, "storage" | "theme" | "locale"> & { host?: TestHost; params?: Record<string, string> };
 
-/** Opens the View, in English, on a Test Host of its own unless one is given. Without a diagram, it says so. */
+/** Opens the View, in English unless a locale is given, on a Test Host of its own unless one is given. Without a diagram, it says so. */
 export async function openView(options: OpenOptions = {}): Promise<Opened> {
-  const host = options.host ?? diagramHost({ storage: options.storage, theme: options.theme });
+  const host = options.host ?? diagramHost({ storage: options.storage, theme: options.theme, locale: options.locale });
   const page = await newPage();
   const surface = await host.attach(page, { surface: "view", ...(options.params ? { params: options.params } : {}) });
   await page.goto(`${server.url}/${manifest.view.entry}`);
-  await page.getByRole("application", { name: "Canvas" }).or(page.getByText("Select or create a diagram")).first().waitFor();
+  // The words of the empty View are English; in another language, the sidebar is what is waited for.
+  const ready = options.locale ? page.locator("nav.dg-sidebar") : page.getByText("Select or create a diagram");
+  await page.getByRole("application", { name: "Canvas" }).or(ready).first().waitFor();
   return { page, host, surface };
 }
 
