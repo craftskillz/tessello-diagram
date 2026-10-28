@@ -424,7 +424,7 @@ function pieceAt({ from, to, controls }: Piece, t: number): Point {
 const PIECES = 64;
 
 /** The points of a path, from its start to its end: its own points, and as many as needed along a curve. */
-function pointsOf(path: Path): Point[] {
+export function pointsOf(path: Path): Point[] {
   if (!path.controls) return path.points;
   return [path.points[0], ...piecesOf(path).flatMap((piece) => Array.from({ length: PIECES }, (_, index) => pieceAt(piece, (index + 1) / PIECES)))];
 }

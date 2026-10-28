@@ -3,7 +3,8 @@
   // finds both come from the shapes and arrows, through lib/geometry.ts and lib/arrows.ts. A gesture changes the model
   // as it goes and saves it when it ends. Shift+click on a shape follows its link, and "← Back" returns from a diagram
   // reached that way.
-  import { anchorOf, arrowAt, constrainAngle, distanceTo, endAt, endOf, isDrawable, isShiftable, labelPlacement, labelPoint, layoutArrows, middlesOf, type Path, pathData, pathWithin, shiftSegment, snapWaypoint, startOf } from "../lib/arrows.ts";
+  import { untrack } from "svelte";
+  import { anchorOf, arrowAt, constrainAngle, distanceTo, endAt, endOf, isDrawable, isShiftable, labelPlacement, labelPoint, layoutArrows, middlesOf, type Path, pathData, pathWithin, pointsOf, shiftSegment, snapWaypoint, startOf } from "../lib/arrows.ts";
   import { applyStyle, copyItems, copyStyle, pasteItems } from "../lib/clipboard.ts";
   import { createArrow, createShape } from "../lib/defaults.ts";
   import { type Arrow, type Diagram, keepsRatio, type ShapeLink, newId, nextZ, removeShape, type Shape, withGroups } from "../lib/diagram.ts";
@@ -180,14 +181,28 @@
     ]);
   });
 
-  // A diagram opens with its origin in the middle of the canvas, and nothing selected.
+  // Only a different diagram opens a new view: rereading the same id keeps the User's framing.
+  const diagramId = $derived(diagram.id);
   $effect(() => {
-    void diagram.id;
+    void diagramId;
+    const canvas = svg;
+    if (!canvas) return;
     ui.selection = [];
     hoveredId = null;
     editing = null;
-    zoom = 1;
-    if (svg) pan = { x: svg.clientWidth / 2, y: svg.clientHeight / 2 };
+    const fitWhenSized = () => {
+      if (canvas.clientWidth <= FIT_MARGIN * 2 || canvas.clientHeight <= FIT_MARGIN * 2) return false;
+      fit();
+      return true;
+    };
+    // Reading the drawing to fit it must not subscribe this opening effect to edits or undo.
+    if (untrack(fitWhenSized)) return;
+    // A hidden canvas waits for layout, then fits once. Later resizes preserve manual zoom and pan.
+    const observer = new ResizeObserver(() => {
+      if (fitWhenSized()) observer.disconnect();
+    });
+    observer.observe(canvas);
+    return () => observer.disconnect();
   });
 
   function toDrawing(event: MouseEvent): Point {
@@ -579,7 +594,7 @@
 
   /** "Fit": shows the whole drawing, its shapes and its arrows, centered; an empty drawing shows its origin at 100%. */
   function fit() {
-    const points = [...diagram.shapes.flatMap((shape) => cornersOf(shape)), ...[...paths.values()].flatMap((path) => path.points)];
+    const points = [...diagram.shapes.flatMap((shape) => cornersOf(shape)), ...[...paths.values()].flatMap(pointsOf)];
     const content = pointsBounds(points);
     const viewport = { w: svg!.clientWidth, h: svg!.clientHeight };
     ({ zoom, pan } = content ? fitView(content, viewport, FIT_MARGIN) : { zoom: 1, pan: { x: viewport.w / 2, y: viewport.h / 2 } });

@@ -182,10 +182,12 @@ export async function imagesStored(host: TestHost, written: (keys: string[]) => 
 
 // The canvas.
 
-/** A point of the drawing, in the coordinates of the page: a diagram opens with its origin in the middle of the canvas. */
+/** A point of the drawing, in page coordinates, following the canvas's current pan and zoom. */
 export async function at(page: Page, x: number, y: number) {
-  const box = (await canvas(page).boundingBox())!;
-  return { x: box.x + box.width / 2 + x, y: box.y + box.height / 2 + y };
+  return canvas(page).locator(":scope > g").evaluate((drawing: SVGGElement, point) => {
+    const { x, y } = new DOMPoint(point.x, point.y).matrixTransform(drawing.getScreenCTM()!);
+    return { x, y };
+  }, { x, y });
 }
 
 type ToolName = "Select (S)" | "Rectangle (R)" | "Ellipse (E)" | "Database (D)" | "Circle (C)" | "Actor (A)" | "Post-it (P)" | "Free text (T)" | "Arrow (F)";
