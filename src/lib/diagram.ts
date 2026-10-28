@@ -115,7 +115,7 @@ export interface Shape {
   cells?: string[][];
   /** A table: the width of each column, as a part of the width of the table; one per column, they sum to 1. */
   columns?: number[];
-  /** A table: its own text style, for the cells that have none of their own; absent is off. */
+  /** The text style of the shape, on its whole text; absent is off. For a table, the style of the cells that have none of their own. */
   bold?: boolean;
   italic?: boolean;
   underline?: boolean;
@@ -351,6 +351,9 @@ function readShape(value: unknown): Shape | null {
     groupId: isText(value.groupId) ? value.groupId : null,
     locked: value.locked === true,
     link: readLink(value.link),
+    ...(value.bold === true ? { bold: true } : {}),
+    ...(value.italic === true ? { italic: true } : {}),
+    ...(value.underline === true ? { underline: true } : {}),
     ...(shape.type === "image" && isText(value.imageKey) ? { imageKey: value.imageKey } : {}),
     ...(shape.type === "custom" ? readCustom(value) : {}),
     ...(shape.type === "table" ? readTable(value) : {}),
@@ -358,12 +361,12 @@ function readShape(value: unknown): Shape | null {
 }
 
 /**
- * The cells, column widths and text style of a table. Rows that are not lists are skipped, short ones are padded with
+ * The cells, column widths and cell styles of a table. Rows that are not lists are skipped, short ones are padded with
  * empty cells, and what is not text is an empty cell; a table has one cell at least. Column widths that are not one
  * positive number per column are replaced by equal ones, and the others are scaled to sum to 1. The styles of the cells
  * are padded or truncated to the cells, each keeping only its valid keys; anything else is a cell that follows the table.
  */
-function readTable(value: StoredFields): Pick<Shape, "cells" | "columns" | "bold" | "italic" | "underline" | "cellStyles"> {
+function readTable(value: StoredFields): Pick<Shape, "cells" | "columns" | "cellStyles"> {
   const rows = Array.isArray(value.cells) ? value.cells.filter(Array.isArray) : [];
   const count = Math.max(1, ...rows.map((row) => row.length));
   const cells = rows.length ? rows.map((row) => Array.from({ length: count }, (_, col) => textOr(row[col], ""))) : [[""]];
@@ -374,9 +377,6 @@ function readTable(value: StoredFields): Pick<Shape, "cells" | "columns" | "bold
   return {
     cells,
     columns: valid ? stored.map((width: number) => width / total) : Array.from({ length: count }, () => 1 / count),
-    ...(value.bold === true ? { bold: true } : {}),
-    ...(value.italic === true ? { italic: true } : {}),
-    ...(value.underline === true ? { underline: true } : {}),
     cellStyles: cells.map((row, r) => row.map((_, c) => readCellStyle(Array.isArray(styles[r]) ? styles[r][c] : undefined))),
   };
 }

@@ -48,9 +48,10 @@ const GAP = 4;
 /**
  * The lines of the text of a shape and where they go, in the frame of the shape. The text of an actor goes below its
  * silhouette, centered and without wrapping, as in the original; that of a custom shape goes where its placement says,
- * outside its picture without wrapping, or over it as in a rectangle.
+ * outside its picture without wrapping, or over it as in a rectangle. The lines wrap as measured in `font`, which is the
+ * bold and italic of the shape unless given.
  */
-export function layoutText(shape: Shape, measure: Measure, font?: Font): TextLayout {
+export function layoutText(shape: Shape, measure: Measure, font: Font = { bold: shape.bold, italic: shape.italic }): TextLayout {
   const lineHeight = shape.fontSize * LINE_HEIGHT;
   const outside = shape.type === "actor" ? "below" : shape.type === "custom" && shape.labelPlacement !== "center" ? (shape.labelPlacement ?? "below") : null;
   if (outside) {

@@ -1284,8 +1284,8 @@
   {#if editing && editedShape}
     <!-- A table's editor covers its cell, placed from the center of the table, whose rotation it ignores as for a shape. -->
     {@const box = editing.cell ? cellBox(editedShape, editing.cell.row, editing.cell.col) : { x: 0, y: 0, w: editedShape.w, h: editedShape.h }}
-    <!-- A cell is edited in the font it shows: its own over that of the table. -->
-    {@const font = editing.cell ? cellStyleOf(editedShape, editing.cell.row, editing.cell.col) : { ...editedShape, bold: false, italic: false, underline: false }}
+    <!-- A cell is edited in the font it shows: its own over that of the table; a shape, in its own. -->
+    {@const font = editing.cell ? cellStyleOf(editedShape, editing.cell.row, editing.cell.col) : editedShape}
     <textarea
       class="dg-text-editor"
       aria-label={editing.cell ? t("cell_label", { row: editing.cell.row + 1, col: editing.cell.col + 1 }) : t("text_label")}

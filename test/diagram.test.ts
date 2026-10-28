@@ -267,6 +267,20 @@ describe("groups", () => {
   });
 });
 
+describe("the text style of a shape", () => {
+  test("is read on every shape type, only when bold, italic and underline are true", () => {
+    for (const type of ["rect", "text"]) {
+      const shape = readDiagram({ shapes: [{ id: "s", x: 0, y: 0, type, bold: true, italic: "yes", underline: true }] }, "d1").shapes[0];
+      assert.deepEqual([shape.bold, shape.italic, shape.underline], [true, undefined, true]);
+    }
+  });
+
+  test("is off for a stored shape that has none", () => {
+    const shape = readDiagram({ shapes: [{ id: "s", x: 0, y: 0 }] }, "d1").shapes[0];
+    assert.deepEqual([shape.bold, shape.italic, shape.underline], [undefined, undefined, undefined]);
+  });
+});
+
 describe("a table", () => {
   const read = (fields: object) => readDiagram({ shapes: [{ id: "t1", x: 0, y: 0, type: "table", ...fields }] }, "d1").shapes[0];
 

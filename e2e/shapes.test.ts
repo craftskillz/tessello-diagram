@@ -133,3 +133,50 @@ test("an attached arrow follows the real outline of a shape that is resized or t
   ends = await arrowEnds(page, arrow);
   near(ends.start, { x: -170, y: 0 });
 });
+
+test("bold, italic and underline style the whole text of any shape: drawn, edited, undone, redone and kept after a reload", async () => {
+  const opened = await openView();
+  const { page, host } = opened;
+  await newDiagram(opened, "Emphasis");
+  await addRectangle(opened, -150, 0, "Role");
+  await addShape(opened, "Free text (T)", 150, 0, "Note");
+  const emphases = ["Bold", "Italic", "Underline"] as const;
+  const shown = (text: string) => page.locator(`text:has-text('${text}')`).first().evaluate((node) => {
+    const { fontWeight, fontStyle, textDecorationLine } = getComputedStyle(node);
+    return { bold: Number(fontWeight) >= 600 || fontWeight === "bold", italic: fontStyle === "italic", underline: textDecorationLine.includes("underline") };
+  });
+  const all = { bold: true, italic: true, underline: true };
+
+  for (const [name, text, index] of [["Rectangle Role", "Role", 0], ["Free text Note", "Note", 1]] as const) {
+    await page.getByRole("img", { name, exact: true }).click();
+    for (const emphasis of emphases) {
+      const button = page.getByRole("button", { name: emphasis, exact: true });
+      assert.equal(await button.getAttribute("aria-pressed"), "false");
+      await saved(host, () => button.click());
+      assert.equal(await button.getAttribute("aria-pressed"), "true");
+    }
+    const style = (await storedDiagram(host)).shapes[index];
+    assert.deepEqual([style.bold, style.italic, style.underline], [true, true, true]);
+    assert.deepEqual(await shown(text), all);
+  }
+
+  // The editor shows the font of the shape while its text is written.
+  await page.getByRole("img", { name: "Rectangle Role", exact: true }).dblclick();
+  const editor = page.getByRole("textbox", { name: "Text of the shape" });
+  const font = await editor.evaluate((node) => { const { fontWeight, fontStyle, textDecorationLine } = getComputedStyle(node); return { bold: Number(fontWeight) >= 600, italic: fontStyle === "italic", underline: textDecorationLine.includes("underline") }; });
+  assert.deepEqual(font, all);
+  await page.keyboard.press("Escape");
+
+  await page.getByRole("img", { name: "Free text Note", exact: true }).click();
+  await saved(host, () => page.keyboard.press("ControlOrMeta+z"));
+  assert.deepEqual(await shown("Note"), { bold: true, italic: true, underline: false });
+  await saved(host, () => page.keyboard.press("ControlOrMeta+Shift+z"));
+  assert.deepEqual(await shown("Note"), all);
+
+  await reload(page);
+  await page.getByRole("img", { name: "Rectangle Role", exact: true }).waitFor();
+  const kept = (await storedDiagram(host)).shapes;
+  assert.deepEqual(kept.map((shape) => [shape.bold, shape.italic, shape.underline]), [[true, true, true], [true, true, true]]);
+  assert.deepEqual(await shown("Role"), all);
+  assert.deepEqual(await shown("Note"), all);
+});

@@ -117,6 +117,9 @@ type StoredShape = {
   textRotation: number;
   color: string;
   fontSize: number;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
   groupId: string | null;
   locked: boolean;
   imageKey?: string;

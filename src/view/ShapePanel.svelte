@@ -1,10 +1,10 @@
 <script lang="ts">
-  // The style of the selected shapes: color, opacity of the fill, text size and alignments, rotation of the shape and
-  // of its text, and order; their group, their lock, and the copy of a style; the link of a single shape. A control
-  // applies to every selected shape, and a change is saved when it is made. On a table, the color, the text size, the
-  // bold, italic and underline and the alignments style the selected cells when there are some, else the whole table,
-  // which erases the own style of its cells. "Save as default for this shape type"
-  // makes the style of one built-in shape the default of its type. The panel is docked beside the canvas, so that it never hides the drawing.
+  // The style of the selected shapes: color, opacity of the fill, text size, bold, italic, underline and alignments,
+  // rotation of the shape and of its text, and order; their group, their lock, and the copy of a style; the link of a
+  // single shape. A control applies to every selected shape, and a change is saved when it is made. On a table, the color,
+  // the text size, the bold, italic and underline and the alignments style the selected cells when there are some, else
+  // the whole table, which erases the own style of its cells. "Save as default for this shape type" makes the style of one
+  // built-in shape the default of its type. The panel is docked beside the canvas, so that it never hides the drawing.
   import { isBuiltIn, shapeAsDefault } from "../lib/defaults.ts";
   import { type CellStyle, clampFontSize, COLORS, FONT_SIZES, groupShapes, LABEL_PLACEMENTS, type LabelPlacement, reorder, type Shape, ungroupShapes } from "../lib/diagram.ts";
   import { degrees } from "../lib/geometry.ts";
@@ -148,16 +148,14 @@
       />
     </label>
 
-    {#if shapes.every((shape) => shape.type === "table")}
-      <!-- Bold, italic and underline apply to the whole text of a cell. -->
-      <div class="dg-group" role="group" aria-label={t("text_style")}>
-        {#each EMPHASES as { key, label, glyph } (key)}
-          <button type="button" class="dg-btn dg-icon dg-emphasis dg-emphasis-{key}" aria-label={label()} title={label()} aria-pressed={styled(key) === true} onclick={() => style({ [key]: styled(key) !== true })}>{glyph}</button>
-        {/each}
-      </div>
-      {#if cellRange}
-        <p class="dg-hint">{t("cells_style_hint")}</p>
-      {/if}
+    <!-- Bold, italic and underline apply to the whole text of a shape, or of a cell. -->
+    <div class="dg-group" role="group" aria-label={t("text_style")}>
+      {#each EMPHASES as { key, label, glyph } (key)}
+        <button type="button" class="dg-btn dg-icon dg-emphasis dg-emphasis-{key}" aria-label={label()} title={label()} aria-pressed={styled(key) === true} onclick={() => style({ [key]: styled(key) !== true })}>{glyph}</button>
+      {/each}
+    </div>
+    {#if cellRange}
+      <p class="dg-hint">{t("cells_style_hint")}</p>
     {/if}
 
     <div class="dg-row">

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { newShape } from "../src/lib/diagram.ts";
-import { layoutCell, wrap } from "../src/lib/text.ts";
+import { layoutCell, layoutText, wrap } from "../src/lib/text.ts";
 
 // Each character is as wide as the font size.
 const measure = (text: string, fontSize: number) => text.length * fontSize;
@@ -18,6 +18,21 @@ describe("the lines of a shape's text", () => {
 
   test("keep a word wider than the width whole", () => {
     assert.deepEqual(wrap("authentication", 80, 10, measure), ["authentication"]);
+  });
+});
+
+describe("the text of a styled shape", () => {
+  // Bold characters are twice as wide: 84 holds 8 regular characters but 4 bold ones; "abc def" is 70 regular, 140 bold.
+  const boldMeasure = (text: string, fontSize: number, font?: { bold?: boolean }) => text.length * fontSize * (font?.bold ? 2 : 1);
+  const rect = { ...newShape("r", { x: 0, y: 0 }, 0), w: 100, h: 40, fontSize: 10, text: "abc def" };
+
+  test("wraps in its own bold font", () => {
+    assert.deepEqual(layoutText(rect, boldMeasure).lines, ["abc def"]);
+    assert.deepEqual(layoutText({ ...rect, bold: true }, boldMeasure).lines, ["abc", "def"]);
+  });
+
+  test("wraps in the font it is given over its own", () => {
+    assert.deepEqual(layoutText({ ...rect, bold: true }, boldMeasure, {}).lines, ["abc def"]);
   });
 });
 

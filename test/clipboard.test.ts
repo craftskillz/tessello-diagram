@@ -114,13 +114,19 @@ describe("copying a style", () => {
     );
   });
 
-  test("a table gives its bold, italic and underline to the tables it is pasted on, and to them alone", () => {
+  test("a shape gives its bold, italic and underline to every shape it is pasted on, whatever its type", () => {
     const source = { ...newShape("s", { x: 0, y: 0 }, 0, "table"), bold: true, underline: true };
     const target = { ...newShape("t", { x: 500, y: 0 }, 1, "table"), italic: true };
-    const shape = newShape("r", { x: 0, y: 200 }, 2);
-    applyStyle(copyStyle(source, false), [target, shape], []);
+    const rect = { ...newShape("r", { x: 0, y: 200 }, 2), italic: true };
+    applyStyle(copyStyle(source, false), [target, rect], []);
     assert.deepEqual([target.bold, target.italic, target.underline], [true, false, true]);
-    assert.deepEqual([shape.bold, shape.italic, shape.underline], [undefined, undefined, undefined]);
+    assert.deepEqual([rect.bold, rect.italic, rect.underline], [true, false, true]);
+  });
+
+  test("a plain shape clears the text style of the shapes it is pasted on", () => {
+    const text = { ...newShape("t", { x: 0, y: 0 }, 0, "text"), bold: true, italic: true, underline: true };
+    applyStyle(copyStyle(newShape("r", { x: 0, y: 200 }, 1), false), [text], []);
+    assert.deepEqual([text.bold, text.italic, text.underline], [false, false, false]);
   });
 
   test("applies only to what is of the same kind", () => {

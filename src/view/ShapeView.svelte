@@ -169,7 +169,7 @@
       {/if}
     {/each}
   {:else if !editing && shape.text}
-    <text font-size={shape.fontSize} text-anchor={text.anchor} dominant-baseline="central" transform="rotate({shape.textRotation})">
+    <text font-size={shape.fontSize} font-weight={shape.bold ? "bold" : undefined} font-style={shape.italic ? "italic" : undefined} text-decoration={shape.underline ? "underline" : undefined} text-anchor={text.anchor} dominant-baseline="central" transform="rotate({shape.textRotation})">
       {#each text.lines as line, index}
         <tspan x={text.x} y={text.y + index * text.lineHeight}>{line}</tspan>
       {/each}

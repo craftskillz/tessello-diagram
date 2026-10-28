@@ -132,6 +132,9 @@ const ROW_STYLE = [
   "portConstraint=eastwest",
 ];
 
+/** The `fontStyle` of draw.io for a text style: bold is 1, italic 2 and underline 4, added; 0 when plain. */
+const fontStyleOf = ({ bold, italic, underline }: { bold?: boolean; italic?: boolean; underline?: boolean }) => (bold ? 1 : 0) | (italic ? 2 : 0) | (underline ? 4 : 0);
+
 /** The style of a cell of a table before its own: its text only, over the background of the table unless the cell has its own. */
 const CELL_STYLE = ["shape=partialRectangle", "html=1", "whiteSpace=wrap", "connectable=0", "strokeColor=inherit", "overflow=hidden", "top=0", "left=0", "bottom=0", "right=0", "pointerEvents=1"];
 
@@ -154,7 +157,7 @@ function tableChildren(shape: Shape): string {
     const parts = [...CELL_STYLE, own ? `fillColor=${colors.fill}` : "fillColor=none"];
     if (own && shape.opacity < 1) parts.push(`fillOpacity=${Math.round(shape.opacity * 100)}`);
     parts.push(`fontSize=${style.fontSize}`, `fontColor=${colors.text}`, `align=${style.textAlign}`, `verticalAlign=${style.textValign}`);
-    const fontStyle = (style.bold ? 1 : 0) | (style.italic ? 2 : 0) | (style.underline ? 4 : 0);
+    const fontStyle = fontStyleOf(style);
     if (fontStyle) parts.push(`fontStyle=${fontStyle}`);
     return parts;
   };
@@ -182,6 +185,9 @@ function shapeCell(shape: Shape, parent: Parent, pictureOf: (shape: Shape) => Pi
   // The opacity of a shape is that of its fill; that of a picture is of the whole picture.
   if (shape.opacity < 1) parts.push(`${body ? "fillOpacity" : "opacity"}=${Math.round(shape.opacity * 100)}`);
   parts.push(`fontSize=${shape.fontSize}`);
+  // A table has no text of its own: its cells carry the style.
+  const fontStyle = shape.type === "table" ? 0 : fontStyleOf(shape);
+  if (fontStyle) parts.push(`fontStyle=${fontStyle}`);
   if (inside && shape.type !== "custom") parts.push(`align=${shape.textAlign}`, `verticalAlign=${shape.textValign}`);
   if (shape.rotation) parts.push(`rotation=${num(shape.rotation)}`);
   const { w, h } = sizeOf(shape);

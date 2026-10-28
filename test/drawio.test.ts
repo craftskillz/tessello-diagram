@@ -290,6 +290,19 @@ describe("converting a diagram to draw.io", () => {
     assert.deepEqual([follows.fillColor, follows.fontStyle], ["none", "1"]);
   });
 
+  test("a shape keeps its bold, italic and underline as a font style, and a plain one has none", () => {
+    const diagram = newDiagram("d1", "Styles", 0);
+    diagram.shapes = [
+      { ...newShape("a", { x: 0, y: 0 }, 0), bold: true, underline: true },
+      { ...newShape("b", { x: 200, y: 0 }, 1, "text"), italic: true },
+      newShape("c", { x: 400, y: 0 }, 2),
+      { ...newShape("t", { x: 0, y: 200 }, 3, "table"), bold: true },
+    ];
+    const { xml } = convert(diagram);
+    const fontStyle = (id: string) => parseStyle(cellOf(xml, id).attributes.style).fontStyle;
+    assert.deepEqual([fontStyle("a"), fontStyle("b"), fontStyle("c"), fontStyle("t")], ["5", "2", undefined, undefined]);
+  });
+
   test("a grouped table is placed within its group, and an arrow attached to a table keeps it and its ports", () => {
     const diagram = newDiagram("d1", "Tables", 0);
     diagram.shapes = [
