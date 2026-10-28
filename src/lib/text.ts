@@ -2,23 +2,29 @@
 // are placed by its alignments. SVG does not wrap text, so the width of a line is measured in the font of the View.
 
 import type { Shape } from "./diagram.ts";
-import { cellBox, tableOf } from "./table.ts";
+import { cellBox, cellStyleOf, tableOf } from "./table.ts";
 
 /** The space between the text and the box of its shape. */
 const PAD = 8;
 export const LINE_HEIGHT = 1.3;
 
-/** The width of a text in a font size, in units of the drawing. */
-export type Measure = (text: string, fontSize: number) => number;
+/** The weight and slant a text is measured in; underline does not change its width. */
+export interface Font {
+  bold?: boolean;
+  italic?: boolean;
+}
 
-/** The lines of a text whose lines wrap between words within `width`; a word wider than `width` stays whole. */
-export function wrap(text: string, width: number, fontSize: number, measure: Measure): string[] {
+/** The width of a text in a font size, in units of the drawing; in the regular font unless a `font` says otherwise. */
+export type Measure = (text: string, fontSize: number, font?: Font) => number;
+
+/** The lines of a text whose lines wrap between words within `width`, measured in `font`; a word wider than `width` stays whole. */
+export function wrap(text: string, width: number, fontSize: number, measure: Measure, font?: Font): string[] {
   return text.split("\n").flatMap((paragraph) => {
     const lines: string[] = [];
     let line = "";
     for (const word of paragraph.split(" ")) {
       const longer = line ? `${line} ${word}` : word;
-      if (line && measure(longer, fontSize) > width) {
+      if (line && measure(longer, fontSize, font) > width) {
         lines.push(line);
         line = word;
       } else line = longer;
@@ -44,7 +50,7 @@ const GAP = 4;
  * silhouette, centered and without wrapping, as in the original; that of a custom shape goes where its placement says,
  * outside its picture without wrapping, or over it as in a rectangle.
  */
-export function layoutText(shape: Shape, measure: Measure): TextLayout {
+export function layoutText(shape: Shape, measure: Measure, font?: Font): TextLayout {
   const lineHeight = shape.fontSize * LINE_HEIGHT;
   const outside = shape.type === "actor" ? "below" : shape.type === "custom" && shape.labelPlacement !== "center" ? (shape.labelPlacement ?? "below") : null;
   if (outside) {
@@ -55,7 +61,7 @@ export function layoutText(shape: Shape, measure: Measure): TextLayout {
     if (outside === "right") return { lines, x: shape.w / 2 + GAP * 2, y: -block / 2, anchor: "start", lineHeight };
     return { lines, x: -shape.w / 2 - GAP * 2, y: -block / 2, anchor: "end", lineHeight };
   }
-  const lines = wrap(shape.text, shape.w - PAD * 2, shape.fontSize, measure);
+  const lines = wrap(shape.text, shape.w - PAD * 2, shape.fontSize, measure, font);
   const block = (lines.length - 1) * lineHeight;
   const y =
     shape.textValign === "top" ? -shape.h / 2 + PAD + shape.fontSize / 2 : shape.textValign === "bottom" ? shape.h / 2 - PAD - shape.fontSize / 2 - block : -block / 2;
@@ -66,11 +72,14 @@ export function layoutText(shape: Shape, measure: Measure): TextLayout {
 
 /**
  * The lines of the text of a cell of a table and where they go, in the frame of the table: they wrap within the width
- * of the cell, as the text of a rectangle the size of the cell does, and are placed from its center.
+ * of the cell, as the text of a rectangle the size of the cell does, and are placed from its center. The cell is laid
+ * out in the style it shows: its own font size and alignments over those of the table, measured in its bold and italic.
  */
 export function layoutCell(shape: Shape, row: number, col: number, measure: Measure): TextLayout {
   const { x, y, w, h } = cellBox(shape, row, col);
-  const layout = layoutText({ ...shape, type: "rect", text: tableOf(shape).cells[row]?.[col] ?? "", w, h }, measure);
+  const { fontSize, bold, italic, textAlign, textValign } = cellStyleOf(shape, row, col);
+  const text = tableOf(shape).cells[row]?.[col] ?? "";
+  const layout = layoutText({ ...shape, type: "rect", text, w, h, fontSize, textAlign, textValign }, measure, { bold, italic });
   return { ...layout, x: layout.x + x, y: layout.y + y };
 }
 
@@ -100,9 +109,9 @@ export function layoutLabel(label: { label: string; labelSize: number; labelWidt
 export function canvasMeasure(): Measure {
   const context = typeof document === "undefined" ? null : document.createElement("canvas").getContext("2d");
   const family = typeof document === "undefined" ? "" : getComputedStyle(document.body).fontFamily;
-  return (text, fontSize) => {
-    if (!context) return text.length * fontSize * 0.58;
-    context.font = `${fontSize}px ${family}`;
+  return (text, fontSize, { bold, italic } = {}) => {
+    if (!context) return text.length * fontSize * 0.58 * (bold ? 1.1 : 1);
+    context.font = `${italic ? "italic " : ""}${bold ? "bold " : ""}${fontSize}px ${family}`;
     return context.measureText(text).width;
   };
 }

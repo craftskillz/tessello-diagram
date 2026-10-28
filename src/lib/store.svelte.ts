@@ -26,6 +26,7 @@ import { imagesReferenced, planImport, readImportFile } from "./import.ts";
 import { dropsImage, IMAGE_LIMIT, PLACED_BYTES, placeImage, type Size, unusedImages } from "./images.ts";
 import { diagramsUsing, type ShapeLibrary } from "./library.ts";
 import { type DiagramStorage, diagramStorage, reasonOf } from "./storage.ts";
+import type { CellRange } from "./table.ts";
 import { entryBytes } from "./usage.ts";
 
 export const diagrams = $state<{ list: DiagramEntry[]; open: Diagram | null }>({ list: [], open: null });
@@ -71,6 +72,8 @@ export const ui = $state({
   customShape: null as { libraryId: string; shapeId: string } | null,
   /** The selected shapes and arrows, by id. */
   selection: [] as string[],
+  /** The selected cells of the one selected table, and the cell a Shift+click extends from. Only meaningful while the selection is that table alone (the canvas clears it otherwise). */
+  cells: null as { id: string; range: CellRange; anchor: { row: number; col: number } } | null,
   /** Resizing keeps the center of the shape where it is, rather than its opposite corner. */
   resizeFromCenter: false,
   /** What Ctrl/Cmd+C copied, and how many times it was pasted since: each paste lands 40 units further. */

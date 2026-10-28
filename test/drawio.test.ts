@@ -264,6 +264,32 @@ describe("converting a diagram to draw.io", () => {
     assert.ok(xml.indexOf('id="t1"') < xml.indexOf('id="t1-r0"') && xml.indexOf('id="t1-r0"') < xml.indexOf('id="t1-r0-c0"'));
   });
 
+  test("a cell keeps its own background and font, and one without follows the table", () => {
+    const diagram = newDiagram("d1", "Tables", 0);
+    diagram.shapes = [
+      {
+        ...newShape("t1", { x: 200, y: 100 }, 0, "table"),
+        w: 200,
+        h: 80,
+        color: "c-blue",
+        opacity: 0.5,
+        bold: true,
+        cells: [["a", "b"], ["c", "d"]],
+        columns: [0.5, 0.5],
+        cellStyles: [[{ color: "c-red", fontSize: 24, italic: true, underline: true, textAlign: "right", textValign: "bottom" }, { color: "c-blue", bold: false }], []],
+      },
+    ];
+    const { xml } = convert(diagram);
+    const own = parseStyle(cellOf(xml, "t1-r0-c0").attributes.style);
+    assert.deepEqual([own.fillColor, own.fillOpacity, own.fontColor], ["#fee2e2", "50", "#7f1d1d"]);
+    assert.deepEqual([own.fontSize, own.fontStyle, own.align, own.verticalAlign], ["24", "7", "right", "bottom"]);
+    // A cell of the color of the table leaves its background to the table, and its own keys apply.
+    const same = parseStyle(cellOf(xml, "t1-r0-c1").attributes.style);
+    assert.deepEqual([same.fillColor, same.fillOpacity, same.fontStyle, same.fontColor], ["none", undefined, undefined, "#1e40af"]);
+    const follows = parseStyle(cellOf(xml, "t1-r1-c0").attributes.style);
+    assert.deepEqual([follows.fillColor, follows.fontStyle], ["none", "1"]);
+  });
+
   test("a grouped table is placed within its group, and an arrow attached to a table keeps it and its ports", () => {
     const diagram = newDiagram("d1", "Tables", 0);
     diagram.shapes = [

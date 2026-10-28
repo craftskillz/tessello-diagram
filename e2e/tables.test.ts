@@ -292,3 +292,156 @@ async function changedHeight(host: Opened["host"], was: number, change: () => Pr
   await until(async () => (await storedDiagram(host)).shapes[0].h !== was, "the table to be stored with its new height");
   return (await storedDiagram(host)).shapes[0].h;
 }
+
+const cellsSelected = (page: Opened["page"]) => page.locator(".dg-cell-selected");
+const styles = async (host: Opened["host"]) => (await storedDiagram(host)).shapes[0].cellStyles!;
+/** Clicks a cell of a table with Shift held. */
+async function shiftClick(page: Opened["page"], table: Table, row: number, col: number) {
+  const spot = await cellSpot(page, table, row, col);
+  await page.keyboard.down("Shift");
+  await page.mouse.click(spot.x, spot.y);
+  await page.keyboard.up("Shift");
+}
+
+test("selects a cell of a selected table, styles it from the panel, then extends the selection to a rectangle", async () => {
+  const opened = await openView();
+  const { page, host } = opened;
+  const table = await selectedTable(opened);
+  await tool(page, "Select (S)");
+  assert.equal(await cellsSelected(page).count(), 0);
+
+  const first = await cellSpot(page, table, 0, 1);
+  await page.mouse.click(first.x, first.y);
+  await until(async () => (await cellsSelected(page).count()) === 1, "one cell to be selected");
+  await saved(host, () => page.getByRole("button", { name: "Red", exact: true }).click());
+  await saved(host, () => page.getByRole("button", { name: "Bold", exact: true }).click());
+  let cellStyles = await styles(host);
+  assert.deepEqual(cellStyles[0][1], { color: "c-red", bold: true });
+  assert.deepEqual([cellStyles[0][0], cellStyles[0][2], ...cellStyles[1], ...cellStyles[2]], Array.from({ length: 8 }, () => ({})));
+  assert.equal(await page.getByRole("button", { name: "Bold", exact: true }).getAttribute("aria-pressed"), "true");
+  assert.equal((await storedDiagram(host)).shapes[0].color, table.color, "the table keeps its own color");
+
+  const size = page.getByRole("spinbutton", { name: "Font size" });
+  await size.fill("20");
+  await saved(host, () => size.press("Enter"));
+  assert.equal((await styles(host))[0][1].fontSize, 20);
+
+  // Shift+click extends the selection to the rectangle between the first cell and this one; the sizes differ there.
+  await shiftClick(page, table, 1, 2);
+  await until(async () => (await cellsSelected(page).count()) === 4, "a rectangle of 4 cells to be selected");
+  assert.equal(await size.inputValue(), "");
+  assert.equal(await page.getByRole("button", { name: "Bold", exact: true }).getAttribute("aria-pressed"), "false");
+  await size.fill("24");
+  await saved(host, () => size.press("Enter"));
+  cellStyles = await styles(host);
+  for (const [row, col] of [[0, 1], [0, 2], [1, 1], [1, 2]]) assert.equal(cellStyles[row][col].fontSize, 24, `cell ${row}, ${col}`);
+  assert.equal(cellStyles[0][0].fontSize, undefined);
+  assert.equal(cellStyles[2][2].fontSize, undefined);
+  assert.equal(await size.inputValue(), "24");
+});
+
+test("a column bar and a row bar select a column and a row; Escape returns to the table, whose style then erases those of its cells", async () => {
+  const opened = await openView();
+  const { page, host } = opened;
+  const table = await selectedTable(opened);
+  await tool(page, "Select (S)");
+
+  await page.getByRole("button", { name: "Select column 2" }).click();
+  await until(async () => (await cellsSelected(page).count()) === 3, "a column to be selected");
+  await saved(host, () => page.getByRole("button", { name: "Italic", exact: true }).click());
+  let cellStyles = await styles(host);
+  assert.deepEqual(cellStyles.map((row) => row[1]), [{ italic: true }, { italic: true }, { italic: true }]);
+  assert.deepEqual(cellStyles.map((row) => row[0]), [{}, {}, {}]);
+
+  await page.getByRole("button", { name: "Select row 3" }).click();
+  await until(async () => (await cellsSelected(page).count()) === 3, "a row to be selected");
+  await saved(host, () => page.getByRole("button", { name: "Green", exact: true }).click());
+  cellStyles = await styles(host);
+  assert.deepEqual(cellStyles[2].map((style) => style.color), ["c-green", "c-green", "c-green"]);
+  assert.equal(cellStyles[0][2].color, undefined);
+
+  await page.keyboard.press("Escape");
+  await until(async () => (await cellsSelected(page).count()) === 0, "the cells to be unselected");
+  assert.equal(await page.getByRole("button", { name: "Select row 3" }).count(), 1, "the table stays selected");
+  await saved(host, () => page.getByRole("button", { name: "Blue", exact: true }).click());
+  const after = (await storedDiagram(host)).shapes[0];
+  assert.equal(after.color, "c-blue");
+  assert.ok(after.cellStyles!.every((row) => row.every((style) => Object.keys(style).length === 0)), "no cell keeps its own style");
+
+  // A click outside the table also gives the selection back to the whole table.
+  await page.getByRole("button", { name: "Select column 1" }).click();
+  await until(async () => (await cellsSelected(page).count()) === 3, "a column to be selected again");
+  await clickAt(page, table.x + table.w, table.y + table.h);
+  await until(async () => (await cellsSelected(page).count()) === 0, "the cells to be unselected by a click outside");
+});
+
+test("the style of a cell is drawn, undone, redone and kept after a reload", async () => {
+  const opened = await openView();
+  const { page, host } = opened;
+  const table = await selectedTable(opened);
+  await tool(page, "Select (S)");
+  const spot = await cellSpot(page, table, 0, 1);
+  await page.mouse.dblclick(spot.x, spot.y);
+  await page.getByRole("textbox", { name: "Cell 1, 2" }).fill("Role");
+  await saved(host, () => page.getByRole("textbox", { name: "Cell 1, 2" }).press("Enter"));
+  await page.mouse.click(spot.x, spot.y);
+  await until(async () => (await cellsSelected(page).count()) === 1, "the cell to be selected");
+  await saved(host, () => page.getByRole("button", { name: "Red", exact: true }).click());
+  await saved(host, () => page.getByRole("button", { name: "Bold", exact: true }).click());
+
+  const grid = page.locator('[data-type="table"]');
+  const shown = async () => ({
+    fills: await grid.locator("[data-cell-fill]").evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-cell-fill"))),
+    weight: await grid.locator("text:has-text('Role')").evaluate((node) => getComputedStyle(node).fontWeight),
+  });
+  assert.deepEqual((await shown()).fills, ["r0c1"]);
+  assert.ok(Number((await shown()).weight) >= 600 || (await shown()).weight === "bold");
+
+  await saved(host, () => page.keyboard.press("ControlOrMeta+z"));
+  await saved(host, () => page.keyboard.press("ControlOrMeta+z"));
+  assert.deepEqual((await styles(host))[0][1], {});
+  assert.deepEqual((await shown()).fills, []);
+  await saved(host, () => page.keyboard.press("ControlOrMeta+Shift+z"));
+  await saved(host, () => page.keyboard.press("ControlOrMeta+Shift+z"));
+  assert.deepEqual((await styles(host))[0][1], { color: "c-red", bold: true });
+
+  await reload(page);
+  await grid.waitFor();
+  assert.deepEqual((await styles(host))[0][1], { color: "c-red", bold: true });
+  assert.deepEqual((await shown()).fills, ["r0c1"]);
+});
+
+test("the bars that select rows and columns never cover the resize, rotate, separator or link handles, at any zoom", async () => {
+  const opened = await openView();
+  const { page } = opened;
+  const table = await selectedTable(opened);
+  await tool(page, "Select (S)");
+  const zoom = page.getByRole("group", { name: "Zoom" });
+  const rects = (selector: string) =>
+    page.locator(selector).evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect()).map(({ left, top, right, bottom }) => ({ left, top, right, bottom })));
+  for (const [times, percent] of [[0, "100%"], [2, "156%"]] as const) {
+    await zoom.getByRole("button", { name: "Fit" }).click();
+    await zoom.getByText("100%", { exact: true }).waitFor();
+    for (let i = 0; i < times; i++) await zoom.getByRole("button", { name: "Zoom in" }).click();
+    await zoom.getByText(percent, { exact: true }).waitFor();
+    for (const [row, col, count] of [[0, 0, 5], [0, 1, 3]] as const) {
+      const spot = await cellSpot(page, table, row, col);
+      await page.mouse.move(spot.x, spot.y);
+      await until(async () => (await links(page).count()) === count, `${count} link handles at ${percent}`);
+      const bars = await rects(".dg-pick");
+      assert.equal(bars.length, 6);
+      const connect = (await rects(".dg-connect circle")).map(({ left, top, right, bottom }) => {
+        const [x, y] = [(left + right) / 2, (top + bottom) / 2];
+        return { left: x - 9, top: y - 9, right: x + 9, bottom: y + 9 };
+      });
+      const others = [...(await rects(".dg-handle:not(.dg-pick), .dg-separator")), ...connect];
+      assert.ok(others.length >= 9 + count);
+      for (const a of bars) {
+        for (const b of others) {
+          const apart = a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top;
+          assert.ok(apart, `a bar ${JSON.stringify(a)} covers ${JSON.stringify(b)} at ${percent}`);
+        }
+      }
+    }
+  }
+});

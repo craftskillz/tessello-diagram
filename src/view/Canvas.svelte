@@ -14,7 +14,7 @@
   import { captionOf } from "../lib/images.ts";
   import { outlineOf, paletteOf, pictureKeyOf, placeCustomShape } from "../lib/library.ts";
   import { creation, diagrams, followLink, goBack, images, insertImage, redo, requestImages, save, shapeLibraries, type Tool, ui, undo } from "../lib/store.svelte.ts";
-  import { cellAnchors, cellAt, cellBox, columnEdges, dragSeparator, resizeCorner, resizeSide, tableOf } from "../lib/table.ts";
+  import { type CellRange, cellAnchors, cellAt, cellBox, cellStyleOf, clipRange, columnEdges, columnRange, dragSeparator, rangeBetween, resizeCorner, resizeSide, rowRange, styleTable, tableOf } from "../lib/table.ts";
   import { canvasMeasure, LABEL_PAD, layoutLabel, LINE_HEIGHT } from "../lib/text.ts";
   import ArrowPanel from "./ArrowPanel.svelte";
   import ArrowView from "./ArrowView.svelte";
@@ -162,6 +162,20 @@
         return Math.abs(across) <= w / 2 + LABEL_PAD && Math.abs(down) <= h / 2 + LABEL_PAD;
       });
   }
+  /**
+   * The selected cells, and their table: the table that is selected alone, unlocked, with the part of the stored range it
+   * still has (an undo or fewer rows can take cells away). The panel then styles these cells, not the whole table.
+   */
+  const cellSelection = $derived.by(() => {
+    const picked = ui.cells;
+    const shape = picked && ui.selection.length === 1 && ui.selection[0] === picked.id ? shapes.get(picked.id) : undefined;
+    const range = shape?.type === "table" && !shape.locked ? clipRange(shape, picked!.range) : undefined;
+    return shape && range ? { shape, range } : undefined;
+  });
+  // A cell selection that no longer holds (another selection, a locked or removed table) is dropped, so it never comes back with its table.
+  $effect(() => {
+    if (ui.cells && !cellSelection) ui.cells = null;
+  });
   /** The shape that shows the handles to resize and turn it: a single selected shape, unless it is locked. */
   const withHandles = $derived(selectedShapes.length === 1 && !editing && !selectedShapes[0].locked ? selectedShapes[0] : undefined);
   /** Hover wins over the single selection; multiple selections never offer connection handles. */
@@ -178,12 +192,17 @@
    * handles that resize or turn a selected table: the side handle in the middle of a side (where the north point of a
    * middle cell lies with 3 columns) reaches 5 screen pixels outside the border, so these handles are 15 pixels out on
    * each axis (a diagonal one too, which is clear of the corner handle) and span from 6 to 24 pixels out; the circle
-   * that turns a table is raised to start beyond them (see `TABLE_STEM`). The offset is in screen pixels, so that it
-   * stays so at any zoom.
+   * that turns a table is raised to start beyond them (see `TABLE_STEM`), and so are the bars that select rows and columns
+   * (`PICK_OFFSET`). The offset is in screen pixels, so that it stays so at any zoom.
    */
   const CELL_HANDLE_OFFSET = 15;
-  /** The stem of a table's rotation handle, longer than the 26 pixels of other shapes, so the circle starts 30 pixels out. */
-  const TABLE_STEM = 36;
+  /** The stem of a table's rotation handle, longer than the 26 pixels of other shapes, so the circle starts 45 pixels out, beyond the bars that select columns. */
+  const TABLE_STEM = 52;
+  /** The middle of the bars that select a row or a column, in screen pixels outside the border: they are 8 thick, from 28 to 36 out, beyond the link handles (to 24) and clear of the rotation handle. */
+  const PICK_OFFSET = 32;
+  const PICK_THICKNESS = 8;
+  /** The space left between two neighbouring bars, in screen pixels. */
+  const PICK_GAP = 4;
   const cellHandles = $derived.by(() => {
     const source = connectionSource;
     if (source?.type !== "table" || hoveredCell?.id !== source.id || hoveredId !== source.id) return [];
@@ -285,8 +304,12 @@
     }
     // Near its line, an arrow wins over a shape under it.
     const item = arrowAt(diagram.arrows, paths, at, reach(HIT)) ?? shapeAt(diagram.shapes, at);
-    // Shift+click follows the link of a shape, locked or not.
-    const link = item && event.shiftKey && !ctrl ? shapes.get(item.id)?.link : null;
+    // On a table that is selected alone, a click selects a cell, and Shift+click extends the cells already selected.
+    const picking = item && ui.tool === "select" && !ctrl && !event.altKey && ui.selection.length === 1 && ui.selection[0] === item.id ? shapes.get(item.id) : undefined;
+    const pickTable = picking?.type === "table" && !picking.locked ? picking : undefined;
+    const extending = pickTable && event.shiftKey && cellSelection?.shape.id === pickTable.id ? cellSelection : undefined;
+    // Shift+click follows the link of a shape, locked or not, unless it extends a selection of cells.
+    const link = item && event.shiftKey && !ctrl && !extending ? shapes.get(item.id)?.link : null;
     if (item && link) {
       event.preventDefault();
       return follow(item.id, link);
@@ -307,6 +330,11 @@
     if (!ui.selection.includes(item.id)) ui.selection = picked;
     // A locked item is selected, and goes no further.
     if (item.locked) return;
+    const cell = pickTable && cellAt(pickTable, at);
+    if (pickTable && cell) {
+      const anchor = extending ? ui.cells!.anchor : cell;
+      ui.cells = { id: pickTable.id, range: rangeBetween(anchor, cell), anchor };
+    }
     // The selected shapes move, and the selected arrows whose two ends are free: an attached arrow does not move by its
     // body. Locked items stay.
     const starts = selectedShapes.filter((shape) => !shape.locked).map(({ id, x, y, w, h, rotation }) => ({ id, x, y, w, h, rotation }));
@@ -592,6 +620,17 @@
     capture(event, { kind: "resizeTable", id: shape.id, part, from: toDrawing(event), start: structuredClone($state.snapshot(shape)), moved: false });
   }
 
+  /** A press on a bar selects its row or column; with Shift it extends the cells selected to cover the whole rows or columns from the anchor. */
+  function pickCells(event: PointerEvent, shape: Shape, axis: "row" | "col", index: number) {
+    if (event.button !== 0) return;
+    event.stopPropagation();
+    const kept = event.shiftKey && cellSelection?.shape.id === shape.id ? ui.cells!.anchor : undefined;
+    const [from, to] = [kept?.[axis] ?? index, index];
+    const whole = axis === "row" ? rowRange(shape, index) : columnRange(shape, index);
+    const range = axis === "row" ? { ...whole, top: Math.min(from, to), bottom: Math.max(from, to) } : { ...whole, left: Math.min(from, to), right: Math.max(from, to) };
+    ui.cells = { id: shape.id, range, anchor: kept ?? (axis === "row" ? { row: index, col: 0 } : { row: 0, col: index }) };
+  }
+
   function startResizeGroup(event: PointerEvent, bounds: Bounds, corner: Corner) {
     if (event.button !== 0) return;
     const starts = selectedShapes.map(({ id, x, y, w, h, rotation }) => ({ id, x, y, w, h, rotation }));
@@ -705,6 +744,8 @@
         event.preventDefault();
         return cancelGesture();
       }
+      // Escape gives the selection back to the whole table before it unselects it.
+      if (cellSelection) return void (ui.cells = null);
       ui.tool = "select";
       ui.selection = [];
     } else if (!event.ctrlKey && !event.metaKey && !event.altKey && TOOL_KEYS[key]) ui.tool = TOOL_KEYS[key];
@@ -751,6 +792,8 @@
       selectedShapes.filter((shape) => !shape.locked),
       selectedArrows.filter((arrow) => !arrow.locked),
     );
+    // The style of a table is that of its cells too: a pasted one erases their own.
+    if (ui.style.kind === "shape") for (const shape of selectedShapes) if (shape.type === "table" && !shape.locked) Object.assign(shape, styleTable(shape, {}));
     void save();
   }
 
@@ -905,6 +948,7 @@
             selected={ui.selection.includes(item.shape.id)}
             editing={editing?.kind === "shape" && editing.id === item.shape.id}
             editingCell={editing?.kind === "shape" && editing.id === item.shape.id ? editing.cell : undefined}
+            selectedCells={cellSelection?.shape.id === item.shape.id ? cellSelection.range : undefined}
             image={key ? images[key] : undefined}
             deleted={item.shape.type === "custom" && !key}
             linkTitle={linkTitle(item.shape.link)}
@@ -1164,6 +1208,43 @@
               />
             {/each}
           {/if}
+          {#if shape.type === "table"}
+            <!-- The bars that select a column (above the table) or a row (to its left), beyond the link handles. -->
+            {@const { cells } = tableOf(shape)}
+            {@const edges = columnEdges(shape)}
+            {@const thick = PICK_THICKNESS / zoom}
+            {@const gap = PICK_GAP / zoom / 2}
+            {#each edges.slice(1) as edge, col (col)}
+              {@const left = edges[col] + gap}
+              <rect
+                role="button"
+                tabindex="-1"
+                aria-label={t("select_column", { n: col + 1 })}
+                class="dg-handle dg-pick"
+                x={left}
+                y={-shape.h / 2 - (PICK_OFFSET + PICK_THICKNESS / 2) / zoom}
+                width={Math.max(0, edge - gap - left)}
+                height={thick}
+                stroke-width={1.5 / zoom}
+                onpointerdown={(event) => pickCells(event, shape, "col", col)}
+              />
+            {/each}
+            {#each cells as _, row (row)}
+              {@const top = -shape.h / 2 + (row * shape.h) / cells.length + gap}
+              <rect
+                role="button"
+                tabindex="-1"
+                aria-label={t("select_row", { n: row + 1 })}
+                class="dg-handle dg-pick"
+                x={-shape.w / 2 - (PICK_OFFSET + PICK_THICKNESS / 2) / zoom}
+                y={top}
+                width={thick}
+                height={Math.max(0, shape.h / cells.length - 2 * gap)}
+                stroke-width={1.5 / zoom}
+                onpointerdown={(event) => pickCells(event, shape, "row", row)}
+              />
+            {/each}
+          {/if}
           <circle
             role="button"
             tabindex="-1"
@@ -1196,6 +1277,8 @@
   {#if editing && editedShape}
     <!-- A table's editor covers its cell, placed from the center of the table, whose rotation it ignores as for a shape. -->
     {@const box = editing.cell ? cellBox(editedShape, editing.cell.row, editing.cell.col) : { x: 0, y: 0, w: editedShape.w, h: editedShape.h }}
+    <!-- A cell is edited in the font it shows: its own over that of the table. -->
+    {@const font = editing.cell ? cellStyleOf(editedShape, editing.cell.row, editing.cell.col) : { ...editedShape, bold: false, italic: false, underline: false }}
     <textarea
       class="dg-text-editor"
       aria-label={editing.cell ? t("cell_label", { row: editing.cell.row + 1, col: editing.cell.col + 1 }) : t("text_label")}
@@ -1203,8 +1286,11 @@
       style:top="{pan.y + (editedShape.y + box.y - box.h / 2) * zoom}px"
       style:width="{box.w * zoom}px"
       style:height="{box.h * zoom}px"
-      style:font-size="{editedShape.fontSize * zoom}px"
-      style:text-align={editedShape.textAlign}
+      style:font-size="{font.fontSize * zoom}px"
+      style:text-align={font.textAlign}
+      style:font-weight={font.bold ? "bold" : undefined}
+      style:font-style={font.italic ? "italic" : undefined}
+      style:text-decoration={font.underline ? "underline" : undefined}
       bind:value={editing.text}
       onkeydown={onTextKey}
       onblur={applyText}
@@ -1272,7 +1358,7 @@
 {:else if selectedArrows.length && !selectedShapes.length}
   <ArrowPanel arrows={selectedArrows} onEditLabel={startEditingLabel} onLock={() => setLocked(true)} onCopyStyle={copySelectionStyle} onPasteStyle={pasteSelectionStyle} />
 {:else}
-  <ShapePanel shapes={selectedShapes} onEditText={(id) => startEditing(id)} onLock={() => setLocked(true)} onCopyStyle={copySelectionStyle} onPasteStyle={pasteSelectionStyle} />
+  <ShapePanel shapes={selectedShapes} cells={cellSelection?.range} onEditText={(id) => startEditing(id)} onLock={() => setLocked(true)} onCopyStyle={copySelectionStyle} onPasteStyle={pasteSelectionStyle} />
 {/if}
 
 <style>
@@ -1374,6 +1460,9 @@
     cursor: ew-resize;
   }
   /* The hit zone of a column separator: invisible, but it takes the pointer along the whole height. */
+  .dg-pick {
+    cursor: pointer;
+  }
   .dg-separator {
     fill: transparent;
     cursor: col-resize;

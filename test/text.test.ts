@@ -39,5 +39,33 @@ describe("the text of a table cell", () => {
     const layout = layoutCell({ ...table, textAlign: "left", textValign: "top" }, 2, 2, measure);
     assert.deepEqual([layout.anchor, layout.x, layout.y], ["start", 0 + 8, 30 - 15 + 8 + 5]);
   });
+
+  test("wraps and spaces its lines by its own font size", () => {
+    // The cell holds 44: "ab c" is 40 at the size 10 of the table, 80 at size 20.
+    const cells = [["", "ab c", "ab c"], ["", "", ""], ["", "", ""]];
+    const styled = { ...table, cells, cellStyles: [[{}, { fontSize: 20 }, {}], [], []] };
+    const big = layoutCell(styled, 0, 1, measure);
+    assert.deepEqual(big.lines, ["ab", "c"]);
+    assert.equal(big.lineHeight, 20 * 1.3);
+    const plain = layoutCell(styled, 0, 2, measure);
+    assert.deepEqual(plain.lines, ["ab c"]);
+    assert.equal(plain.lineHeight, 10 * 1.3);
+  });
+
+  test("is measured in bold when its own font is bold", () => {
+    // Bold characters are twice as wide: 44 holds 2 bold characters of 10.
+    const boldMeasure = (text: string, fontSize: number, font?: { bold?: boolean }) => text.length * fontSize * (font?.bold ? 2 : 1);
+    const styled = { ...table, cells: [["", "abcd", "abcd"], ["", "", ""], ["", "", ""]], cellStyles: [[{}, { bold: true }, {}], [], []] };
+    assert.deepEqual(layoutCell(styled, 0, 1, boldMeasure).lines, ["abcd"]);
+    const words = { ...styled, cells: [["", "ab c", "ab c"], ["", "", ""], ["", "", ""]] };
+    assert.deepEqual(layoutCell(words, 0, 1, boldMeasure).lines, ["ab", "c"]);
+    assert.deepEqual(layoutCell(words, 0, 2, boldMeasure).lines, ["ab c"]);
+  });
+
+  test("is placed by its own alignments, as the text of a rectangle of the cell", () => {
+    const styled = { ...table, cellStyles: [[], [], [{}, {}, { textAlign: "right" as const, textValign: "bottom" as const }]] };
+    const layout = layoutCell(styled, 2, 2, measure);
+    assert.deepEqual([layout.anchor, layout.x, layout.y], ["end", 112, 30 + 15 - 8 - 5]);
+  });
 });
 const near = (actual: number, expected: number) => assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} is not ${expected}`);

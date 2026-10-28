@@ -1,12 +1,14 @@
 <script lang="ts">
   // The style of the selected shapes: color, opacity of the fill, text size and alignments, rotation of the shape and
   // of its text, and order; their group, their lock, and the copy of a style; the link of a single shape. A control
-  // applies to every selected shape, and a change is saved when it is made. "Save as default for this shape type"
+  // applies to every selected shape, and a change is saved when it is made. On a table, the color, the text size, the
+  // bold, italic and underline and the alignments style the selected cells when there are some, else the whole table,
+  // which erases the own style of its cells. "Save as default for this shape type"
   // makes the style of one built-in shape the default of its type. The panel is docked beside the canvas, so that it never hides the drawing.
   import { isBuiltIn, shapeAsDefault } from "../lib/defaults.ts";
-  import { clampFontSize, COLORS, FONT_SIZES, groupShapes, LABEL_PLACEMENTS, type LabelPlacement, reorder, type Shape, ungroupShapes } from "../lib/diagram.ts";
+  import { type CellStyle, clampFontSize, COLORS, FONT_SIZES, groupShapes, LABEL_PLACEMENTS, type LabelPlacement, reorder, type Shape, ungroupShapes } from "../lib/diagram.ts";
   import { degrees } from "../lib/geometry.ts";
-  import { MAX_CELLS, setColumnCount, setRowCount, tableOf } from "../lib/table.ts";
+  import { type CellRange, MAX_CELLS, setColumnCount, setRowCount, sharedCellStyle, styleCells, styleTable, tableOf, wholeRange } from "../lib/table.ts";
   import { t } from "../lib/i18n.ts";
   import { creation, diagrams, save, saveDefaults, ui } from "../lib/store.svelte.ts";
   import LinkDialog from "./LinkDialog.svelte";
@@ -18,7 +20,8 @@
     onLock,
     onCopyStyle,
     onPasteStyle,
-  }: { shapes: Shape[]; onEditText: (id: string) => void; onLock: () => void; onCopyStyle: () => void; onPasteStyle: () => void } = $props();
+    cells,
+  }: { cells?: CellRange; shapes: Shape[]; onEditText: (id: string) => void; onLock: () => void; onCopyStyle: () => void; onPasteStyle: () => void } = $props();
 
   /** Whether "Link on this shape" is open, for the one selected shape. */
   let linking = $state(false);
@@ -34,6 +37,25 @@
     void saveDefaults(shapeAsDefault(creation.defaults, first));
   }
 
+  /** The cells the style goes to: the selected cells of the one selected table, none for the whole shapes. */
+  const cellRange = $derived(cells && shapes.length === 1 && first.type === "table" ? cells : undefined);
+
+  /** The value of a style key that the selected cells, or else the selected shapes, share; for a table, the value of all its cells. */
+  function styled<K extends keyof CellStyle>(key: K): CellStyle[K] | undefined {
+    if (cellRange) return sharedCellStyle(first, cellRange, key);
+    const values = shapes.map((shape) => (shape.type === "table" ? sharedCellStyle(shape, wholeRange(shape), key) : (shape[key] as CellStyle[K])));
+    return values.every((value) => value === values[0]) ? values[0] : undefined;
+  }
+
+  /** Applies a style to the selected cells; without any, to every selected shape, a table being styled as a whole. */
+  function style(change: CellStyle) {
+    if (cellRange) {
+      first.cellStyles = styleCells(first, cellRange, change);
+      return void save();
+    }
+    apply((shape) => Object.assign(shape, shape.type === "table" ? styleTable(shape, change) : change));
+  }
+
   /** The value the selected shapes share, if they share one. */
   const shared = <K extends keyof Shape>(key: K): Shape[K] | undefined => (shapes.every((shape) => shape[key] === first[key]) ? first[key] : undefined);
 
@@ -43,7 +65,7 @@
   }
 
   function setFontSize(value: number) {
-    if (Number.isFinite(value)) apply((shape) => (shape.fontSize = clampFontSize(value)));
+    if (Number.isFinite(value)) style({ fontSize: clampFontSize(value) });
   }
 
   function order(where: "front" | "back") {
@@ -66,6 +88,11 @@
     void save();
   }
 
+  const EMPHASES = [
+    { key: "bold", label: () => t("bold"), glyph: "B" },
+    { key: "italic", label: () => t("italic"), glyph: "I" },
+    { key: "underline", label: () => t("underline"), glyph: "U" },
+  ] as const;
   const ALIGNS = [
     { value: "left", label: () => t("align_left"), icon: "M4 6h16M4 12h10M4 18h13" },
     { value: "center", label: () => t("align_center"), icon: "M4 6h16M7 12h10M5 18h14" },
@@ -89,8 +116,8 @@
           class="dg-swatch {color}"
           aria-label={t(color)}
           title={t(color)}
-          aria-pressed={shared("color") === color}
-          onclick={() => apply((shape) => (shape.color = color))}
+          aria-pressed={styled("color") === color}
+          onclick={() => style({ color })}
         ></button>
       {/each}
     </div>
@@ -114,25 +141,37 @@
         type="number"
         min={FONT_SIZES.min}
         max={FONT_SIZES.max}
-        value={shared("fontSize") ?? ""}
+        value={styled("fontSize") ?? ""}
         onchange={(event) => {
           setFontSize(event.currentTarget.valueAsNumber);
-          event.currentTarget.value = String(shared("fontSize") ?? "");
+          event.currentTarget.value = String(styled("fontSize") ?? "");
         }}
       />
     </label>
 
+    {#if shapes.every((shape) => shape.type === "table")}
+      <!-- Bold, italic and underline apply to the whole text of a cell. -->
+      <div class="dg-group" role="group" aria-label={t("text_style")}>
+        {#each EMPHASES as { key, label, glyph } (key)}
+          <button type="button" class="dg-btn dg-icon dg-emphasis dg-emphasis-{key}" aria-label={label()} title={label()} aria-pressed={styled(key) === true} onclick={() => style({ [key]: styled(key) !== true })}>{glyph}</button>
+        {/each}
+      </div>
+      {#if cellRange}
+        <p class="dg-hint">{t("cells_style_hint")}</p>
+      {/if}
+    {/if}
+
     <div class="dg-row">
       <div class="dg-group" role="group" aria-label={t("text_align")}>
         {#each ALIGNS as { value, label, icon } (value)}
-          <button type="button" class="dg-btn dg-icon" aria-label={label()} title={label()} aria-pressed={shared("textAlign") === value} onclick={() => apply((shape) => (shape.textAlign = value))}>
+          <button type="button" class="dg-btn dg-icon" aria-label={label()} title={label()} aria-pressed={styled("textAlign") === value} onclick={() => style({ textAlign: value })}>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d={icon} /></svg>
           </button>
         {/each}
       </div>
       <div class="dg-group" role="group" aria-label={t("text_valign")}>
         {#each VALIGNS as { value, label, icon } (value)}
-          <button type="button" class="dg-btn dg-icon" aria-label={label()} title={label()} aria-pressed={shared("textValign") === value} onclick={() => apply((shape) => (shape.textValign = value))}>
+          <button type="button" class="dg-btn dg-icon" aria-label={label()} title={label()} aria-pressed={styled("textValign") === value} onclick={() => style({ textValign: value })}>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d={icon} /></svg>
           </button>
         {/each}
@@ -222,6 +261,16 @@
   .dg-hint {
     margin: 0;
     color: var(--muted);
+  }
+  .dg-emphasis {
+    font-weight: 700;
+    font-family: inherit;
+  }
+  .dg-emphasis-italic {
+    font-style: italic;
+  }
+  .dg-emphasis-underline {
+    text-decoration: underline;
   }
 </style>
 

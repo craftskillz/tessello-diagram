@@ -29,6 +29,7 @@ const PAINT_PROPERTIES = [
   "font-size",
   "font-style",
   "font-weight",
+  "text-decoration",
 ];
 
 /** What a PNG shows: the shapes and arrows of a diagram, with what draws them, as Drawing.svelte takes them. */

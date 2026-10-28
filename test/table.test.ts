@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { type Shape, newShape } from "../src/lib/diagram.ts";
-import { MAX_CELLS, MIN_COLUMN, MIN_ROW, cellAt, cellBox, columnEdges, dragSeparator, resizeCorner, resizeSide, setColumnCount, setRowCount, tableAnchors } from "../src/lib/table.ts";
+import { clipRange, MAX_CELLS, MIN_COLUMN, MIN_ROW, cellAt, cellBox, cellStyleOf, columnEdges, columnRange, dragSeparator, inRange, rangeBetween, resizeCorner, resizeSide, rowRange, setColumnCount, setRowCount, sharedCellStyle, styleCells, styleTable, tableAnchors, tableOf, wholeRange } from "../src/lib/table.ts";
 
 /** A table of 240 × 90 centered on (100, 50): three columns of 60, 60 and 120, and three rows of 30. */
 function table(fields: Partial<Shape> = {}): Shape {
@@ -232,5 +232,101 @@ describe("the anchors of a table", () => {
     assert.deepEqual(facing("r2c2-SE"), { x: 1, y: 1 });
     // A corner of a cell on the top side only is not a corner of the table.
     assert.deepEqual(facing("r0c0-NE"), { x: 0, y: -1 });
+  });
+});
+
+/** A table of 2 rows × 3 columns whose cell (0, 1) has its own style. */
+function styled(fields: Partial<Shape> = {}): Shape {
+  const cellStyles = [[{}, { color: "c-blue", bold: true, fontSize: 20 }, {}], [{}, {}, {}]];
+  return table({ cells: [["a", "b", "c"], ["d", "e", "f"]], h: 60, cellStyles, color: "c-gray", fontSize: 14, ...fields });
+}
+
+describe("the style of the cells of a table", () => {
+  test("a table has a style for each of its cells, a shape without any has cells that follow it", () => {
+    assert.deepEqual(tableOf(styled()).cellStyles[0][1], { color: "c-blue", bold: true, fontSize: 20 });
+    const bare = { ...styled(), cellStyles: undefined };
+    assert.deepEqual(tableOf(bare).cellStyles, [[{}, {}, {}], [{}, {}, {}]]);
+    assert.deepEqual(tableOf({ ...styled(), cellStyles: [[{ bold: true }]] }).cellStyles, [[{ bold: true }, {}, {}], [{}, {}, {}]]);
+  });
+
+  test("the style of a cell is its own keys over those of the table", () => {
+    const shape = styled({ italic: true, textAlign: "right" });
+    assert.deepEqual(cellStyleOf(shape, 0, 1), {
+      color: "c-blue", fontSize: 20, bold: true, italic: true, underline: false, textAlign: "right", textValign: shape.textValign,
+    });
+    assert.deepEqual(cellStyleOf(shape, 1, 1), {
+      color: "c-gray", fontSize: 14, bold: false, italic: true, underline: false, textAlign: "right", textValign: shape.textValign,
+    });
+    assert.deepEqual(wholeRange(shape), { top: 0, left: 0, bottom: 1, right: 2 });
+  });
+
+  test("ranges are rectangles of cells, from any two cells, a row or a column", () => {
+    assert.deepEqual(rangeBetween({ row: 2, col: 0 }, { row: 1, col: 3 }), { top: 1, left: 0, bottom: 2, right: 3 });
+    assert.deepEqual(rowRange(styled(), 1), { top: 1, left: 0, bottom: 1, right: 2 });
+    assert.deepEqual(columnRange(styled(), 2), { top: 0, left: 2, bottom: 1, right: 2 });
+    const range = rangeBetween({ row: 0, col: 1 }, { row: 1, col: 2 });
+    assert.deepEqual([inRange(range, 0, 0), inRange(range, 0, 1), inRange(range, 1, 2), inRange(range, 2, 2)], [false, true, true, false]);
+  });
+
+  test("styling a range writes the change into each of its cells, over their own, and nothing else", () => {
+    const shape = styled();
+    const next = styleCells(shape, rangeBetween({ row: 0, col: 0 }, { row: 0, col: 1 }), { bold: false, textAlign: "center", fontSize: 500 });
+    assert.deepEqual(next[0][0], { bold: false, textAlign: "center", fontSize: 72 });
+    assert.deepEqual(next[0][1], { color: "c-blue", bold: false, fontSize: 72, textAlign: "center" });
+    assert.deepEqual(next[0][2], {});
+    assert.deepEqual(next[1], [{}, {}, {}]);
+    assert.deepEqual(shape.cellStyles![0][1], { color: "c-blue", bold: true, fontSize: 20 });
+    assert.notEqual(next, shape.cellStyles);
+    assert.notEqual(next[1], shape.cellStyles![1]);
+  });
+
+  test("styling a range beyond the table only reaches its cells", () => {
+    const next = styleCells(styled(), { top: 1, left: 2, bottom: 9, right: 9 }, { italic: true });
+    assert.deepEqual(next, [[{}, { color: "c-blue", bold: true, fontSize: 20 }, {}], [{}, {}, { italic: true }]]);
+  });
+
+  test("styling the whole table sets its own style and erases that of all its cells", () => {
+    const change = styleTable(styled(), { color: "c-red", underline: true, fontSize: 0 });
+    assert.deepEqual(change, { color: "c-red", underline: true, fontSize: 6, cellStyles: [[{}, {}, {}], [{}, {}, {}]] });
+  });
+
+  test("a range shares a value when its cells have the same one, own or followed", () => {
+    const shape = styled();
+    assert.equal(sharedCellStyle(shape, rowRange(shape, 1), "color"), "c-gray");
+    assert.equal(sharedCellStyle(shape, rowRange(shape, 0), "color"), undefined);
+    assert.equal(sharedCellStyle(shape, columnRange(shape, 1), "bold"), undefined);
+    assert.equal(sharedCellStyle(shape, rangeBetween({ row: 0, col: 0 }, { row: 0, col: 0 }), "bold"), false);
+    assert.equal(sharedCellStyle(shape, rangeBetween({ row: 0, col: 1 }, { row: 0, col: 1 }), "fontSize"), 20);
+  });
+
+  test("an added row copies the style of the last row, apart from it, and a removed row takes its style away", () => {
+    const shape = styled({ cellStyles: [[{}, {}, {}], [{ bold: true }, {}, { color: "c-red" }]] });
+    const added = setRowCount(shape, 4);
+    assert.deepEqual(added.cellStyles, [[{}, {}, {}], [{ bold: true }, {}, { color: "c-red" }], [{ bold: true }, {}, { color: "c-red" }], [{ bold: true }, {}, { color: "c-red" }]]);
+    assert.notEqual(added.cellStyles[2][0], added.cellStyles[1][0]);
+    assert.notEqual(added.cellStyles[3][0], added.cellStyles[2][0]);
+    assert.deepEqual(setRowCount(styled(), 1).cellStyles, [[{}, { color: "c-blue", bold: true, fontSize: 20 }, {}]]);
+  });
+
+  test("an added column copies the style of the last column in each row, and a removed column takes its style away", () => {
+    const shape = styled({ cellStyles: [[{}, {}, { color: "c-red" }], [{}, {}, { italic: true }]] });
+    const added = setColumnCount(shape, 5);
+    assert.deepEqual(added.cellStyles, [[{}, {}, { color: "c-red" }, { color: "c-red" }, { color: "c-red" }], [{}, {}, { italic: true }, { italic: true }, { italic: true }]]);
+    assert.notEqual(added.cellStyles[0][3], added.cellStyles[0][2]);
+    assert.deepEqual(setColumnCount(styled(), 2).cellStyles, [[{}, { color: "c-blue", bold: true, fontSize: 20 }], [{}, {}]]);
+  });
+
+  test("dragging a separator keeps the styles, and resizing a corner scales their own font sizes only", () => {
+    assert.deepEqual(dragSeparator(styled(), 0, 10).cellStyles, styled().cellStyles);
+    const next = resizeCorner(styled(), "se", { x: 120, y: 30 });
+    assert.deepEqual(next.cellStyles, [[{}, { color: "c-blue", bold: true, fontSize: 30 }, {}], [{}, {}, {}]]);
+    assert.equal(next.fontSize, 21);
+  });
+
+  test("a range is clipped to the rows and columns left in the table, none when it is wholly outside", () => {
+    assert.deepEqual(clipRange(styled(), { top: 0, left: 1, bottom: 1, right: 2 }), { top: 0, left: 1, bottom: 1, right: 2 });
+    assert.deepEqual(clipRange(styled(), { top: 1, left: 1, bottom: 5, right: 9 }), { top: 1, left: 1, bottom: 1, right: 2 });
+    assert.equal(clipRange(styled(), { top: 2, left: 0, bottom: 4, right: 0 }), undefined);
+    assert.equal(clipRange(styled(), { top: 0, left: 3, bottom: 0, right: 3 }), undefined);
   });
 });

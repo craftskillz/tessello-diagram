@@ -8,7 +8,7 @@ import type { Arrow, Diagram, LabelPlacement, Shape } from "./diagram.ts";
 import { degrees, type Endpoint, isAttached, lidOf, type Outlined, type Point, portPoint, portsOf } from "./geometry.ts";
 import { outlineOf, pictureKeyOf, type ShapeLibrary } from "./library.ts";
 import { boundsOf } from "./placement.ts";
-import { columnEdges, tableOf } from "./table.ts";
+import { cellStyleOf, columnEdges, tableOf } from "./table.ts";
 
 /** The colors of each key of the palette, in its light variant (base.css): fill, outline and text. */
 const PALETTE: Record<string, { fill: string; stroke: string; text: string }> = {
@@ -132,26 +132,38 @@ const ROW_STYLE = [
   "portConstraint=eastwest",
 ];
 
-/** The style of a cell of a table: its text only, in the colors and the alignment of the table. */
-const CELL_STYLE = ["shape=partialRectangle", "html=1", "whiteSpace=wrap", "connectable=0", "strokeColor=inherit", "overflow=hidden", "fillColor=none", "top=0", "left=0", "bottom=0", "right=0", "pointerEvents=1"];
+/** The style of a cell of a table before its own: its text only, over the background of the table unless the cell has its own. */
+const CELL_STYLE = ["shape=partialRectangle", "html=1", "whiteSpace=wrap", "connectable=0", "strokeColor=inherit", "overflow=hidden", "top=0", "left=0", "bottom=0", "right=0", "pointerEvents=1"];
 
 /**
  * The rows of a table, then their cells, as the children draw.io nests in it: a row from the top of the table, a cell from
- * its left, each as high as its row and as wide as its column. They are not rotated, the table is.
+ * its left, each as high as its row and as wide as its column. They are not rotated, the table is. A cell shows its
+ * style (its own keys over those of the table): its font, text color and alignments, and a background of its own when its
+ * color is not the table's, at the opacity of the table; otherwise it has none, the table body drawing it.
  */
-function tableChildren(shape: Shape, colors: { text: string }): string {
+function tableChildren(shape: Shape): string {
   const { cells } = tableOf(shape);
   const edges = columnEdges(shape).map((edge) => edge + shape.w / 2);
   const h = shape.h / cells.length;
   const vertex = (id: string, value: string, style: string[], parent: string, geometry: string) =>
     `<mxCell id="${attribute(id)}" value="${attribute(value)}" style="${attribute(styleOf(style))}" vertex="1" parent="${attribute(parent)}"><mxGeometry ${geometry} as="geometry"/></mxCell>`;
-  const cellStyle = [...CELL_STYLE, `fontSize=${shape.fontSize}`, `fontColor=${colors.text}`, `align=${shape.textAlign}`, `verticalAlign=${shape.textValign}`];
+  const cellStyle = (r: number, c: number) => {
+    const style = cellStyleOf(shape, r, c);
+    const colors = PALETTE[style.color] ?? PALETTE["c-gray"];
+    const own = style.color !== shape.color;
+    const parts = [...CELL_STYLE, own ? `fillColor=${colors.fill}` : "fillColor=none"];
+    if (own && shape.opacity < 1) parts.push(`fillOpacity=${Math.round(shape.opacity * 100)}`);
+    parts.push(`fontSize=${style.fontSize}`, `fontColor=${colors.text}`, `align=${style.textAlign}`, `verticalAlign=${style.textValign}`);
+    const fontStyle = (style.bold ? 1 : 0) | (style.italic ? 2 : 0) | (style.underline ? 4 : 0);
+    if (fontStyle) parts.push(`fontStyle=${fontStyle}`);
+    return parts;
+  };
   return cells
     .map((row, r) => {
       const rowId = `${shape.id}-r${r}`;
       return (
         vertex(rowId, "", ROW_STYLE, shape.id, `y="${num(r * h)}" width="${num(shape.w)}" height="${num(h)}"`) +
-        row.map((text, c) => vertex(`${rowId}-c${c}`, html(text), cellStyle, rowId, `x="${num(edges[c])}" width="${num(edges[c + 1] - edges[c])}" height="${num(h)}"`)).join("")
+        row.map((text, c) => vertex(`${rowId}-c${c}`, html(text), cellStyle(r, c), rowId, `x="${num(edges[c])}" width="${num(edges[c + 1] - edges[c])}" height="${num(h)}"`)).join("")
       );
     })
     .join("");
@@ -177,7 +189,7 @@ function shapeCell(shape: Shape, parent: Parent, pictureOf: (shape: Shape) => Pi
   // A custom shape whose definition is deleted shows its name, unless it has a text.
   const text = shape.type === "custom" && !picture ? shape.text || (shape.customShapeRef?.name ?? "") : shape.type === "table" ? "" : shape.text;
   const cell = `<mxCell id="${attribute(shape.id)}" value="${attribute(html(text))}" style="${attribute(styleOf(parts))}" vertex="1" parent="${attribute(parent.id)}">${geometry}</mxCell>`;
-  return shape.type === "table" ? cell + tableChildren(shape, colors) : cell;
+  return shape.type === "table" ? cell + tableChildren(shape) : cell;
 }
 
 /**

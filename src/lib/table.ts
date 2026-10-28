@@ -3,7 +3,7 @@
 // their proportions. What each function computes is the new box of the table, the center, the size and the widths of its
 // columns, to be applied to the shape. The coordinates "in the frame" are those from its center, without its rotation.
 
-import { clampFontSize, type Shape } from "./diagram.ts";
+import { type CellStyle, clampFontSize, type Shape } from "./diagram.ts";
 import { type Anchor, type Corner, cornerSign, PORTS, type Point, rotate } from "./geometry.ts";
 
 /** The smallest width of a column, in units of the drawing. */
@@ -22,12 +22,85 @@ export function columnEdges(shape: Shape): number[] {
   return [x, ...columns.map((part) => (x += part * shape.w))].map((edge, i, edges) => (i === edges.length - 1 ? shape.w / 2 : edge));
 }
 
-/** The cells and the column widths of a table; those a shape without them would have, one cell, for safety. */
-export function tableOf(shape: Shape): { cells: string[][]; columns: number[] } {
+/** The cells, the column widths and the cell styles of a table; those a shape without them would have, one cell, for safety. */
+export function tableOf(shape: Shape): { cells: string[][]; columns: number[]; cellStyles: CellStyle[][] } {
   const cells = shape.cells?.length && shape.cells[0].length ? shape.cells : [[""]];
   const count = cells[0].length;
   const columns = shape.columns?.length === count ? shape.columns : Array.from({ length: count }, () => 1 / count);
-  return { cells, columns };
+  const cellStyles = cells.map((row, r) => row.map((_, c) => shape.cellStyles?.[r]?.[c] ?? {}));
+  return { cells, columns, cellStyles };
+}
+
+/** The style a cell shows: its own keys over those of the table. */
+export function cellStyleOf(shape: Shape, row: number, col: number): Required<CellStyle> {
+  const own = tableOf(shape).cellStyles[row]?.[col] ?? {};
+  return {
+    color: own.color ?? shape.color,
+    fontSize: own.fontSize ?? shape.fontSize,
+    bold: own.bold ?? shape.bold ?? false,
+    italic: own.italic ?? shape.italic ?? false,
+    underline: own.underline ?? shape.underline ?? false,
+    textAlign: own.textAlign ?? shape.textAlign,
+    textValign: own.textValign ?? shape.textValign,
+  };
+}
+
+/** A rectangle of cells, by their indexes, the last ones included. */
+export interface CellRange {
+  top: number;
+  left: number;
+  bottom: number;
+  right: number;
+}
+
+/** The rectangle of cells spanning two cells, given in any order. */
+export const rangeBetween = (a: { row: number; col: number }, b: { row: number; col: number }): CellRange => ({
+  top: Math.min(a.row, b.row),
+  left: Math.min(a.col, b.col),
+  bottom: Math.max(a.row, b.row),
+  right: Math.max(a.col, b.col),
+});
+
+/** All the cells of a table. */
+export const wholeRange = (shape: Shape): CellRange => ({ top: 0, left: 0, bottom: tableOf(shape).cells.length - 1, right: tableOf(shape).columns.length - 1 });
+
+/** All the cells of a row. */
+export const rowRange = (shape: Shape, row: number): CellRange => ({ top: row, left: 0, bottom: row, right: tableOf(shape).columns.length - 1 });
+
+/** All the cells of a column. */
+export const columnRange = (shape: Shape, col: number): CellRange => ({ top: 0, left: col, bottom: tableOf(shape).cells.length - 1, right: col });
+
+/** The part of a range that is in the table, or undefined when the table (after losing rows or columns) no longer has any of it. */
+export function clipRange(shape: Shape, range: CellRange): CellRange | undefined {
+  const { cells, columns } = tableOf(shape);
+  const clipped = { top: range.top, left: range.left, bottom: Math.min(range.bottom, cells.length - 1), right: Math.min(range.right, columns.length - 1) };
+  return clipped.top > clipped.bottom || clipped.left > clipped.right ? undefined : clipped;
+}
+
+/** Whether a cell is in a range. */
+export const inRange = (range: CellRange, row: number, col: number): boolean =>
+  row >= range.top && row <= range.bottom && col >= range.left && col <= range.right;
+
+/** The change with its font size, if any, within the limits of font sizes. */
+const clampedChange = (change: CellStyle): CellStyle => (change.fontSize === undefined ? change : { ...change, fontSize: clampFontSize(change.fontSize) });
+
+/** The styles of the cells once `change` is written over the own style of each cell of the range (clipped to the table); a new array, the shape is left as it is. */
+export function styleCells(shape: Shape, range: CellRange, change: CellStyle): CellStyle[][] {
+  const applied = clampedChange(change);
+  return tableOf(shape).cellStyles.map((row, r) => row.map((style, c) => (inRange(range, r, c) ? { ...style, ...applied } : { ...style })));
+}
+
+/** What to assign on a table shape to style it as a whole: the change as its own style, and no own style left on any cell. */
+export function styleTable(shape: Shape, change: CellStyle): Partial<Shape> {
+  return { ...clampedChange(change), cellStyles: tableOf(shape).cellStyles.map((row) => row.map(() => ({}))) };
+}
+
+/** The value of a style key that every cell of the range shows, or undefined when they differ. */
+export function sharedCellStyle<K extends keyof CellStyle>(shape: Shape, range: CellRange, key: K): Required<CellStyle>[K] | undefined {
+  const { cells } = tableOf(shape);
+  const values = new Set<Required<CellStyle>[K]>();
+  cells.forEach((row, r) => row.forEach((_, c) => inRange(range, r, c) && values.add(cellStyleOf(shape, r, c)[key])));
+  return values.size === 1 ? [...values][0] : undefined;
 }
 
 /** The box of a cell around its own center, in the frame of the table. */
@@ -101,6 +174,7 @@ export interface TableChange {
   h: number;
   columns: number[];
   cells: string[][];
+  cellStyles: CellStyle[][];
 }
 
 const countWithin = (count: number): number => Math.min(MAX_CELLS, Math.max(1, Math.round(count)));
@@ -116,7 +190,7 @@ function growFromCorner(shape: Shape, dx: number, dy: number): Point {
  * removed are the last; the table widens or narrows by their width, its left side fixed.
  */
 export function setColumnCount(shape: Shape, count: number): TableChange {
-  const { cells, columns } = tableOf(shape);
+  const { cells, columns, cellStyles } = tableOf(shape);
   const next = countWithin(count);
   const widths = columns.map((part) => part * shape.w);
   const average = shape.w / columns.length;
@@ -128,6 +202,7 @@ export function setColumnCount(shape: Shape, count: number): TableChange {
     h: shape.h,
     columns: kept.map((width) => width / w),
     cells: cells.map((row) => Array.from({ length: next }, (_, col) => row[col] ?? "")),
+    cellStyles: cellStyles.map((row) => Array.from({ length: next }, (_, col) => ({ ...row[Math.min(col, row.length - 1)] }))),
   };
 }
 
@@ -136,7 +211,7 @@ export function setColumnCount(shape: Shape, count: number): TableChange {
  * the table grows or shrinks by their height, its top side fixed.
  */
 export function setRowCount(shape: Shape, count: number): TableChange {
-  const { cells, columns } = tableOf(shape);
+  const { cells, columns, cellStyles } = tableOf(shape);
   const next = countWithin(count);
   const h = (shape.h / cells.length) * next;
   return {
@@ -145,6 +220,7 @@ export function setRowCount(shape: Shape, count: number): TableChange {
     h,
     columns,
     cells: Array.from({ length: next }, (_, row) => cells[row] ?? columns.map(() => "")),
+    cellStyles: Array.from({ length: next }, (_, row) => cellStyles[Math.min(row, cellStyles.length - 1)].map((style) => ({ ...style }))),
   };
 }
 
@@ -154,12 +230,12 @@ export function setRowCount(shape: Shape, count: number): TableChange {
  * same, its left side fixed. The last column's separator is the right side of the table.
  */
 export function dragSeparator(shape: Shape, index: number, dx: number): TableChange {
-  const { cells, columns } = tableOf(shape);
+  const { cells, columns, cellStyles } = tableOf(shape);
   const widths = columns.map((part) => part * shape.w);
   const applied = Math.max(MIN_COLUMN, widths[index] + dx) - widths[index];
   widths[index] += applied;
   const w = shape.w + applied;
-  return { ...growFromCorner(shape, applied, 0), w, h: shape.h, columns: widths.map((width) => width / w), cells };
+  return { ...growFromCorner(shape, applied, 0), w, h: shape.h, columns: widths.map((width) => width / w), cells, cellStyles };
 }
 
 /** The smallest width of a table: its narrowest column at its minimum width. */
@@ -167,11 +243,11 @@ const minWidth = (shape: Shape): number => MIN_COLUMN / Math.min(...tableOf(shap
 /** The smallest height of a table: all its rows at their minimum height. */
 const minHeight = (shape: Shape): number => tableOf(shape).cells.length * MIN_ROW;
 
-/** What resizing sets on a table shape: its box, and its font size when the resizing scales it. */
-export type TableResize = Omit<TableChange, "cells"> & { fontSize?: number };
+/** What resizing sets on a table shape: its box, and its font size and the own font sizes of its cells when the resizing scales them. */
+export type TableResize = Omit<TableChange, "cells" | "cellStyles"> & { fontSize?: number; cellStyles?: CellStyle[][] };
 
 /** The box of a table `w` × `h`, whose side or corner of the signs (`sx`, `sy`) was dragged: the opposite one stays, or the center. */
-function resized(shape: Shape, w: number, h: number, sx: number, sy: number, fromCenter: boolean): Omit<TableResize, "fontSize"> {
+function resized(shape: Shape, w: number, h: number, sx: number, sy: number, fromCenter: boolean): Omit<TableResize, "fontSize" | "cellStyles"> {
   const columns = tableOf(shape).columns;
   if (fromCenter) return { x: shape.x, y: shape.y, w, h, columns };
   const shift = rotate({ x: (sx * (w - shape.w)) / 2, y: (sy * (h - shape.h)) / 2 }, shape.rotation);
@@ -206,5 +282,8 @@ export function resizeCorner(shape: Shape, corner: Corner, delta: Point, { fromC
     minWidth(shape) / shape.w,
     minHeight(shape) / shape.h,
   );
-  return { ...resized(shape, shape.w * scale, shape.h * scale, sx, sy, fromCenter), fontSize: clampFontSize(shape.fontSize * scale) };
+  const cellStyles = tableOf(shape).cellStyles.map((row) =>
+    row.map((style) => (style.fontSize === undefined ? { ...style } : { ...style, fontSize: clampFontSize(style.fontSize * scale) })),
+  );
+  return { ...resized(shape, shape.w * scale, shape.h * scale, sx, sy, fromCenter), fontSize: clampFontSize(shape.fontSize * scale), cellStyles };
 }

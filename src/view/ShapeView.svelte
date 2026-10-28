@@ -8,7 +8,7 @@
   import type { Shape } from "../lib/diagram.ts";
   import { lidOf } from "../lib/geometry.ts";
   import { t } from "../lib/i18n.ts";
-  import { columnEdges, tableOf } from "../lib/table.ts";
+  import { type CellRange, cellBox, cellStyleOf, columnEdges, inRange, tableOf } from "../lib/table.ts";
   import { layoutCell, layoutText, type Measure } from "../lib/text.ts";
 
   let {
@@ -17,6 +17,7 @@
     selected,
     editing,
     editingCell,
+    selectedCells,
     image,
     deleted = false,
     linkTitle,
@@ -28,6 +29,8 @@
     editing: boolean;
     /** The cell of a table whose text is edited: only that one is hidden. */
     editingCell?: { row: number; col: number };
+    /** The cells of a table that are selected, outlined over the table. */
+    selectedCells?: CellRange;
     /** The picture of an image as a data URL, null when it is missing, undefined while it is read. */
     image?: string | null;
     /** A custom shape whose definition is deleted. */
@@ -40,7 +43,8 @@
   const w = $derived(shape.w);
   const h = $derived(shape.h);
   const text = $derived(layoutText(shape, measure));
-  // A table draws the text of each cell, wrapped in its column, and the lines between its cells.
+  // A table draws the text of each cell, wrapped in its column, and the lines between its cells. A cell with a background
+  // of its own has a rectangle in the color of its palette key, over the body and under the lines.
   const grid = $derived.by(() => {
     if (shape.type !== "table") return undefined;
     const { cells } = tableOf(shape);
@@ -48,7 +52,7 @@
       columns: columnEdges(shape).slice(1, -1),
       rows: Array.from({ length: cells.length - 1 }, (_, row) => -h / 2 + ((row + 1) * h) / cells.length),
       cells: cells.flatMap((line, row) =>
-        line.map((value, col) => ({ row, col, value, layout: value ? layoutCell(shape, row, col, measure) : undefined })),
+        line.map((value, col) => ({ row, col, value, style: cellStyleOf(shape, row, col), box: cellBox(shape, row, col), layout: value ? layoutCell(shape, row, col, measure) : undefined })),
       ),
     };
   });
@@ -97,11 +101,29 @@
     <rect class="dg-frame" x={-w / 2} y={-h / 2} width={w} height={h} rx="3" />
   {:else if grid}
     <rect class="dg-body" x={-w / 2} y={-h / 2} width={w} height={h} fill-opacity={shape.opacity} />
+    {#each grid.cells as { row, col, style, box } (`${row}/${col}`)}
+      {#if style.color !== shape.color}
+        <rect
+          class="dg-cell-fill {style.color}"
+          data-cell-fill="r{row}c{col}"
+          x={box.x - box.w / 2}
+          y={box.y - box.h / 2}
+          width={box.w}
+          height={box.h}
+          fill-opacity={shape.opacity}
+        />
+      {/if}
+    {/each}
     {#each grid.columns as x}
       <line class="dg-grid-line" x1={x} y1={-h / 2} x2={x} y2={h / 2} />
     {/each}
     {#each grid.rows as y}
       <line class="dg-grid-line" x1={-w / 2} y1={y} x2={w / 2} y2={y} />
+    {/each}
+    {#each grid.cells as { row, col, box } (`${row}/${col}`)}
+      {#if selectedCells && inRange(selectedCells, row, col)}
+        <rect class="dg-cell-selected" data-cell="r{row}c{col}" x={box.x - box.w / 2} y={box.y - box.h / 2} width={box.w} height={box.h} />
+      {/if}
     {/each}
   {:else if shape.type === "image"}
     {#if image}
@@ -129,9 +151,17 @@
     </g>
   {/if}
   {#if grid}
-    {#each grid.cells as { row, col, layout } (`${row}/${col}`)}
+    {#each grid.cells as { row, col, style, layout } (`${row}/${col}`)}
       {#if layout && !(editingCell?.row === row && editingCell?.col === col)}
-        <text font-size={shape.fontSize} text-anchor={layout.anchor} dominant-baseline="central">
+        <text
+          class={style.color}
+          font-size={style.fontSize}
+          font-weight={style.bold ? "bold" : undefined}
+          font-style={style.italic ? "italic" : undefined}
+          text-decoration={style.underline ? "underline" : undefined}
+          text-anchor={layout.anchor}
+          dominant-baseline="central"
+        >
           {#each layout.lines as line, index}
             <tspan x={layout.x} y={layout.y + index * layout.lineHeight}>{line}</tspan>
           {/each}
@@ -156,6 +186,19 @@
   .dg-grid-line {
     stroke: var(--stroke);
     stroke-width: 1;
+  }
+  .dg-cell-fill {
+    fill: var(--fill);
+    stroke: none;
+    pointer-events: none;
+  }
+  /* The selected cells: a translucent accent over them, outlined, which never takes the pointer. */
+  .dg-cell-selected {
+    fill: var(--accent);
+    fill-opacity: 0.18;
+    stroke: var(--accent);
+    stroke-width: 2;
+    pointer-events: none;
   }
   .dg-fold {
     fill: var(--stroke);

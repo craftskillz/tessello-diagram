@@ -281,6 +281,7 @@ describe("a table", () => {
     const table = newShape("t1", { x: 5, y: 5 }, 0, "table");
     table.cells = [["a", "b"], ["c", "d"]];
     table.columns = [0.25, 0.75];
+    table.cellStyles = [[{}, {}], [{}, {}]];
     assert.deepEqual(readDiagram(JSON.parse(JSON.stringify({ shapes: [table] })), "d1").shapes[0], table);
   });
 
@@ -302,6 +303,40 @@ describe("a table", () => {
     for (const columns of [undefined, [1], [1, 1, 1], [1, 0], [1, -2], [1, "x"], "wide"]) {
       assert.deepEqual(read({ cells: [["a", "b"]], columns }).columns, [0.5, 0.5]);
     }
+  });
+
+  test("is created with 3 × 3 cells that follow it, and no text style of its own", () => {
+    const table = newShape("t1", { x: 0, y: 0 }, 0, "table");
+    assert.deepEqual(table.cellStyles, Array.from({ length: 3 }, () => [{}, {}, {}]));
+    assert.deepEqual([table.bold, table.italic, table.underline], [undefined, undefined, undefined]);
+  });
+
+  test("keeps the styles of its cells and its own text style through a save and a reload", () => {
+    const table = newShape("t1", { x: 5, y: 5 }, 0, "table");
+    table.cells = [["a", "b"], ["c", "d"]];
+    table.columns = [0.5, 0.5];
+    table.bold = true;
+    table.cellStyles = [[{ color: "c-blue", fontSize: 20, italic: true }, {}], [{}, { textAlign: "right", textValign: "bottom", underline: true, bold: false }]];
+    assert.deepEqual(readDiagram(JSON.parse(JSON.stringify({ shapes: [table] })), "d1").shapes[0], table);
+  });
+
+  test("stored without cell styles has cells that all follow it", () => {
+    const table = read({ cells: [["a", "b"], ["c", "d"]] });
+    assert.deepEqual(table.cellStyles, [[{}, {}], [{}, {}]]);
+  });
+
+  test("with cell styles that do not fit its cells has them padded, truncated and repaired", () => {
+    const table = read({
+      cells: [["a", "b"], ["c", "d"]],
+      cellStyles: [[{ color: 4, fontSize: 500, bold: "yes", italic: true, textAlign: "diagonal", textValign: "top", font: "x" }], "oops", [{}, {}], [{}, {}]],
+    });
+    assert.deepEqual(table.cellStyles, [[{ fontSize: 72, italic: true, textValign: "top" }, {}], [{}, {}]]);
+    assert.deepEqual(read({ cells: [["a"]], cellStyles: "x" }).cellStyles, [[{}]]);
+  });
+
+  test("reads its own bold, italic and underline only when they are true", () => {
+    const table = read({ bold: true, italic: "yes", underline: 1 });
+    assert.deepEqual([table.bold, table.italic, table.underline], [true, undefined, undefined]);
   });
 
   test("is the only shape that carries cells", () => {

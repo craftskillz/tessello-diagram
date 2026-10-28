@@ -54,8 +54,8 @@ export const clampArrowWidth = (width: number): number =>
 /** Whether a shape always keeps its proportions when resized: the actor's silhouette, and the circle. */
 export const keepsRatio = (type: ShapeType): boolean => type === "actor" || type === "circle";
 
-const TEXT_ALIGNS = ["left", "center", "right"] as const;
-const TEXT_VALIGNS = ["top", "middle", "bottom"] as const;
+export const TEXT_ALIGNS = ["left", "center", "right"] as const;
+export const TEXT_VALIGNS = ["top", "middle", "bottom"] as const;
 export const ROUTES = ["straight", "curved", "elbow"] as const;
 /** Where the text of a custom shape goes: outside its picture, on one side, or over it. */
 export const LABEL_PLACEMENTS = ["below", "above", "right", "left", "center"] as const;
@@ -115,6 +115,23 @@ export interface Shape {
   cells?: string[][];
   /** A table: the width of each column, as a part of the width of the table; one per column, they sum to 1. */
   columns?: number[];
+  /** A table: its own text style, for the cells that have none of their own; absent is off. */
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  /** A table: the style of each cell, by row then column, as many as `cells`; `{}` is a cell that follows the table. */
+  cellStyles?: CellStyle[][];
+}
+
+/** The style of a table cell's background and text; a key that is absent follows the table. The background is a key of `COLORS`, and the text color goes with it as for a shape. */
+export interface CellStyle {
+  color?: string;
+  fontSize?: number;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  textAlign?: (typeof TEXT_ALIGNS)[number];
+  textValign?: (typeof TEXT_VALIGNS)[number];
 }
 
 export interface Arrow {
@@ -164,7 +181,7 @@ export interface DiagramEntry {
 /** A new shape centered on a point, with the creation values of its type. */
 export function newShape(id: string, at: Point, z: number, type: ShapeType = "rect"): Shape {
   const { w, h, color } = CREATION[type];
-  const table = type === "table" ? { cells: Array.from({ length: 3 }, () => ["", "", ""]), columns: [1 / 3, 1 / 3, 1 / 3] } : {};
+  const table = type === "table" ? { cells: Array.from({ length: 3 }, () => ["", "", ""]), columns: [1 / 3, 1 / 3, 1 / 3], cellStyles: Array.from({ length: 3 }, () => [{}, {}, {}]) } : {};
   return {
     ...table,
     id,
@@ -341,18 +358,39 @@ function readShape(value: unknown): Shape | null {
 }
 
 /**
- * The cells and column widths of a table. Rows that are not lists are skipped, short ones are padded with empty cells,
- * and what is not text is an empty cell; a table has one cell at least. Column widths that are not one positive number
- * per column are replaced by equal ones, and the others are scaled to sum to 1.
+ * The cells, column widths and text style of a table. Rows that are not lists are skipped, short ones are padded with
+ * empty cells, and what is not text is an empty cell; a table has one cell at least. Column widths that are not one
+ * positive number per column are replaced by equal ones, and the others are scaled to sum to 1. The styles of the cells
+ * are padded or truncated to the cells, each keeping only its valid keys; anything else is a cell that follows the table.
  */
-function readTable(value: StoredFields): Pick<Shape, "cells" | "columns"> {
+function readTable(value: StoredFields): Pick<Shape, "cells" | "columns" | "bold" | "italic" | "underline" | "cellStyles"> {
   const rows = Array.isArray(value.cells) ? value.cells.filter(Array.isArray) : [];
   const count = Math.max(1, ...rows.map((row) => row.length));
   const cells = rows.length ? rows.map((row) => Array.from({ length: count }, (_, col) => textOr(row[col], ""))) : [[""]];
   const stored = Array.isArray(value.columns) ? value.columns : [];
   const valid = stored.length === count && stored.every((width) => isNumber(width) && width > 0);
   const total = valid ? stored.reduce((sum: number, width: number) => sum + width, 0) : 0;
-  return { cells, columns: valid ? stored.map((width: number) => width / total) : Array.from({ length: count }, () => 1 / count) };
+  const styles = Array.isArray(value.cellStyles) ? value.cellStyles : [];
+  return {
+    cells,
+    columns: valid ? stored.map((width: number) => width / total) : Array.from({ length: count }, () => 1 / count),
+    ...(value.bold === true ? { bold: true } : {}),
+    ...(value.italic === true ? { italic: true } : {}),
+    ...(value.underline === true ? { underline: true } : {}),
+    cellStyles: cells.map((row, r) => row.map((_, c) => readCellStyle(Array.isArray(styles[r]) ? styles[r][c] : undefined))),
+  };
+}
+
+/** The valid keys of the stored style of a cell; a style that is not a record follows the table. */
+function readCellStyle(value: unknown): CellStyle {
+  if (!isRecord(value)) return {};
+  const style: CellStyle = {};
+  if (isText(value.color)) style.color = value.color;
+  if (isNumber(value.fontSize)) style.fontSize = clampFontSize(value.fontSize);
+  for (const key of ["bold", "italic", "underline"] as const) if (typeof value[key] === "boolean") style[key] = value[key];
+  if (TEXT_ALIGNS.includes(value.textAlign as never)) style.textAlign = value.textAlign as CellStyle["textAlign"];
+  if (TEXT_VALIGNS.includes(value.textValign as never)) style.textValign = value.textValign as CellStyle["textValign"];
+  return style;
 }
 
 /** The definition of a custom shape and where its text goes; one without a definition is drawn as a deleted one. */

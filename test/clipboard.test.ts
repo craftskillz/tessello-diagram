@@ -142,4 +142,15 @@ describe("a copied table", () => {
     copy.cells![0][0] = "changed";
     assert.equal(table.cells[0][0], "a");
   });
+
+  test("is pasted with the styles of its cells, apart from the original", () => {
+    const diagram = newDiagram("d1", "Tables", 0);
+    const table = { ...newShape("t1", { x: 0, y: 0 }, 0, "table"), cells: [["a", "b"]], columns: [0.5, 0.5], cellStyles: [[{ color: "c-blue", bold: true }, {}]] };
+    diagram.shapes = [table];
+    const [pasted] = pasteItems(diagram, copyItems(diagram, ["t1"]), 20, ids);
+    const copy = diagram.shapes.find((shape) => shape.id === pasted)!;
+    assert.deepEqual(copy.cellStyles, [[{ color: "c-blue", bold: true }, {}]]);
+    copy.cellStyles![0][0].color = "c-red";
+    assert.equal(table.cellStyles[0][0].color, "c-blue");
+  });
 });
