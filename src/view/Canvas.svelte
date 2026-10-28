@@ -258,6 +258,13 @@
     return () => observer.disconnect();
   });
 
+  /** Slides the panel of the selection in from the right edge and back out, the canvas taking the width it leaves. */
+  function drawer(node: HTMLElement) {
+    const width = node.offsetWidth;
+    const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    return { duration: reducedMotion ? 0 : 180, css: (step: number) => `width: ${step * width}px` };
+  }
+
   function toDrawing(event: MouseEvent): Point {
     const box = svg!.getBoundingClientRect();
     return { x: (event.clientX - box.left - pan.x) / zoom, y: (event.clientY - box.top - pan.y) / zoom };
@@ -1351,17 +1358,27 @@
   </div>
 </div>
 
-{#if selectedLocked.length}
-  <aside class="dg-panel" aria-label={t("locked_panel")}>
-    <button type="button" class="dg-btn" onclick={() => setLocked(false)}>{t("unlock")}</button>
-  </aside>
-{:else if selectedArrows.length && !selectedShapes.length}
-  <ArrowPanel arrows={selectedArrows} onEditLabel={startEditingLabel} onLock={() => setLocked(true)} onCopyStyle={copySelectionStyle} onPasteStyle={pasteSelectionStyle} />
-{:else}
-  <ShapePanel shapes={selectedShapes} cells={cellSelection?.range} onEditText={(id) => startEditing(id)} onLock={() => setLocked(true)} onCopyStyle={copySelectionStyle} onPasteStyle={pasteSelectionStyle} />
+{#if selectedShapes.length || selectedArrows.length}
+  <div class="dg-drawer" transition:drawer>
+    {#if selectedLocked.length}
+      <aside class="dg-panel" aria-label={t("locked_panel")}>
+        <button type="button" class="dg-btn" onclick={() => setLocked(false)}>{t("unlock")}</button>
+      </aside>
+    {:else if selectedArrows.length && !selectedShapes.length}
+      <ArrowPanel arrows={selectedArrows} onEditLabel={startEditingLabel} onLock={() => setLocked(true)} onCopyStyle={copySelectionStyle} onPasteStyle={pasteSelectionStyle} />
+    {:else}
+      <ShapePanel shapes={selectedShapes} cells={cellSelection?.range} onEditText={(id) => startEditing(id)} onLock={() => setLocked(true)} onCopyStyle={copySelectionStyle} onPasteStyle={pasteSelectionStyle} />
+    {/if}
+  </div>
 {/if}
 
 <style>
+  /* Clips the panel while it slides, so that it keeps its width and leaves by the right edge. */
+  .dg-drawer {
+    flex: none;
+    display: flex;
+    overflow: hidden;
+  }
   .dg-canvas {
     position: relative;
     flex: 1;

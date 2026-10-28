@@ -106,9 +106,8 @@
 </script>
 
 <aside class="dg-panel" aria-label={t("shape_panel")}>
-  {#if !first}
-    <p class="dg-hint">{t("shape_panel_empty")}</p>
-  {:else}
+  <!-- Empty only while the panel slides out, the selection already gone. -->
+  {#if first}
     <div class="dg-swatches" role="group" aria-label={t("color")}>
       {#each COLORS as color (color)}
         <button

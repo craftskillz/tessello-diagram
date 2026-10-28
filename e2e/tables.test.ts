@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { until } from "@tessello/sdk/testing";
-import { addRectangle, arrowEnds, at, canvas, clickAt, drag, dragHandle, middleOf, near, newDiagram, openView, reload, saved, storedDiagram, tool, useBrowser } from "./diagram.ts";
+import { addRectangle, arrowEnds, at, canvas, clickAt, drag, dragHandle, middleOf, near, newDiagram, openView, panelSlidIn, reload, saved, storedDiagram, tool, useBrowser } from "./diagram.ts";
 
 useBrowser();
 
@@ -199,6 +199,10 @@ test("pulls a link from a cell point; the Arrow tool starts and ends on cell poi
   const table = await selectedTable(opened);
   await addRectangle(opened, 400, 0, "Target");
   await tool(page, "Select (S)");
+  // Fits both shapes beside the panel of the selection, which would otherwise push Target, on the right edge, out of view.
+  await clickAt(page, table.x, table.y);
+  await panelSlidIn(page);
+  await page.getByRole("group", { name: "Zoom" }).getByRole("button", { name: "Fit" }).click();
   const spot = await cellSpot(page, table, 0, 2);
   await page.mouse.move(spot.x, spot.y);
   const handle = page.getByRole("button", { name: "Link from cell 1, 3 (right)" });

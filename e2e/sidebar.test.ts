@@ -5,7 +5,7 @@ import { test } from "node:test";
 import type { Page } from "playwright";
 import { until } from "@tessello/sdk/testing";
 import { newDiagram, newShape } from "../src/lib/diagram.ts";
-import { canvas, diagramHost, isSelected, openView, sidebar, storedDiagram, useBrowser } from "./diagram.ts";
+import { canvas, diagramHost, isSelected, openView, panelSlidIn, sidebar, storedDiagram, useBrowser } from "./diagram.ts";
 
 useBrowser();
 
@@ -25,6 +25,7 @@ test("hides the list and shows it again, keeping the focus, the view and the dia
   await zoom.getByText("125%").waitFor();
   await page.getByRole("img", { name: "Rectangle A", exact: true }).click();
   await until(() => isSelected(page, "Rectangle A"), "the shape to be selected");
+  await panelSlidIn(page);
   const width = (await canvas(page).boundingBox())!.width;
   const stored = await storedDiagram(host, diagram.id);
 

@@ -115,7 +115,6 @@ const en = {
   rotate_text_handle: "Rotate the text",
 
   shape_panel: "Shape style",
-  shape_panel_empty: "Select a shape to change its style.",
   color: "Color",
   opacity: "Background opacity",
   font_size: "Font size",
@@ -433,7 +432,6 @@ const fr: Messages = {
   rotate_text_handle: "Tourner le texte",
 
   shape_panel: "Style de la forme",
-  shape_panel_empty: "Sélectionnez une forme pour changer son style.",
   color: "Couleur",
   opacity: "Opacité du fond",
   font_size: "Taille du texte",

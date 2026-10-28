@@ -96,7 +96,8 @@ body {
 
 /* The panels docked beside the canvas, for the selected shapes or arrows: they never hide the drawing. */
 .dg-panel {
-  flex: 0 0 232px;
+  flex: none;
+  width: 232px;
   display: flex;
   flex-direction: column;
   gap: 10px;

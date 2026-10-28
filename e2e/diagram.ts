@@ -280,6 +280,14 @@ export async function pointOn(page: Page, name: string, part: number) {
   return at(page, point.x, point.y);
 }
 
+/** Width of the panel of the selection, docked on the right of the canvas. */
+export const PANEL_WIDTH = 232;
+
+/** Waits until the panel of the selection has slid in to its full width. */
+export async function panelSlidIn(page: Page) {
+  await until(async () => (await page.locator(".dg-drawer").boundingBox())?.width === PANEL_WIDTH, "the panel to slide in");
+}
+
 export async function isSelected(page: Page, name: string | RegExp) {
   return /\bselected\b/.test((await page.getByRole("img", { name, exact: typeof name === "string" }).getAttribute("class"))!);
 }
