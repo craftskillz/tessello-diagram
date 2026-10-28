@@ -26,16 +26,22 @@ export function rotate({ x, y }: Point, degrees: number): Point {
 /** The point in the frame of a box: from its center, without its rotation. */
 const toLocal = (box: Box, point: Point): Point => rotate({ x: point.x - box.x, y: point.y - box.y }, -box.rotation);
 
-/** A port of a custom shape, set in the shape editor: where it is, as parts of the width and height of the shape from its top-left corner. */
+/**
+ * A port of a shape that sets its own, such as a custom shape (in the shape editor) or a table (one per cell border
+ * point): where it is, as parts of the width and height of the shape from its top-left corner. It may say which way it
+ * faces, in the frame of the shape, for the arrows that leave it; else it faces away from the center.
+ */
 export interface Anchor {
   id: string;
   x: number;
   y: number;
+  facing?: Point;
 }
 
 /**
  * The box of a shape and its type, which gives its outline: a box without a type is a rectangle. A custom shape is a
- * rectangle too, whose ports are the anchors of its definition: none when it has no definition.
+ * rectangle too, whose ports are the anchors of its definition: none when it has no definition. A table is one as
+ * well, whose ports are the anchors of its cells, once given (see `outlineOf`).
  */
 export interface Outlined extends Box {
   type?: ShapeType;
@@ -109,7 +115,7 @@ export function connectionHandlePoint(box: Box, direction: ConnectionDirection, 
 
 /** The existing port used when pulling a connection from a side of a shape. */
 export function connectionPort(shape: Outlined, direction: ConnectionDirection): string | null {
-  if (shape.type !== "custom") return direction;
+  if (!hasAnchors(shape)) return direction;
   const side = PORT_SIDES[direction];
   const target = { x: (side.x + 1) / 2, y: (side.y + 1) / 2 };
   let nearest: Anchor | undefined;
@@ -124,6 +130,13 @@ export function connectionPort(shape: Outlined, direction: ConnectionDirection):
   return nearest?.id ?? null;
 }
 
+/**
+ * Whether a shape sets its own ports, its anchors, instead of having the eight of a rectangle: a custom shape always
+ * does, none when it has no definition, and any shape given anchors, such as a table. An empty list of anchors is
+ * therefore not the same as none.
+ */
+const hasAnchors = (shape: { type?: ShapeType; anchors?: readonly Anchor[] }): boolean => shape.type === "custom" || shape.anchors !== undefined;
+
 /** The direction of each port from the center, in the frame of the shape: x right, y down. */
 const PORT_SIDES: Record<string, Point> = {
   N: { x: 0, y: -1 },
@@ -136,23 +149,24 @@ const PORT_SIDES: Record<string, Point> = {
   NW: { x: -1, y: -1 },
 };
 
-/** The ports a shape offers: the eight of a built-in shape, or the anchors of a custom shape, maybe none. */
+/** The ports a shape offers: the eight of a built-in shape, or its anchors (those of a custom shape or a table), maybe none. */
 export const portsOf = (shape: { type?: ShapeType; anchors?: readonly Anchor[] }): readonly string[] =>
-  shape.type === "custom" ? (shape.anchors ?? []).map((anchor) => anchor.id) : PORTS;
+  hasAnchors(shape) ? (shape.anchors ?? []).map((anchor) => anchor.id) : PORTS;
 
-/** Where an anchor of a custom shape is, in the frame of the shape; none for a port it does not have. */
-function anchorPoint(shape: Outlined, port: string): Point | undefined {
-  const anchor = shape.anchors?.find((anchor) => anchor.id === port);
-  return anchor && { x: (anchor.x - 0.5) * shape.w, y: (anchor.y - 0.5) * shape.h };
-}
+/** An anchor of a shape, by its port; none for a port it does not have. */
+const anchorNamed = (shape: Outlined, port: string): Anchor | undefined => shape.anchors?.find((anchor) => anchor.id === port);
+
+/** Where an anchor is, in the frame of the shape (from its center, not turned). */
+const anchorPoint = (shape: Outlined, anchor: Anchor): Point => ({ x: (anchor.x - 0.5) * shape.w, y: (anchor.y - 0.5) * shape.h });
 
 /**
  * Where a port of a shape is, on its real outline: the corners of a rectangle, on the curve of an ellipse or a circle,
  * where the sides of a database meet its lids. It follows the rotation of the shape. An unknown port is the center.
  */
 export function portPoint(shape: Outlined, port: string): Point {
-  if (shape.type === "custom") {
-    const at = rotate(anchorPoint(shape, port) ?? { x: 0, y: 0 }, shape.rotation);
+  if (hasAnchors(shape)) {
+    const anchor = anchorNamed(shape, port);
+    const at = rotate(anchor ? anchorPoint(shape, anchor) : { x: 0, y: 0 }, shape.rotation);
     return { x: shape.x + at.x, y: shape.y + at.y };
   }
   const side = PORT_SIDES[port];
@@ -165,9 +179,16 @@ export function portPoint(shape: Outlined, port: string): Point {
   return { x: shape.x + onOutline.x, y: shape.y + onOutline.y };
 }
 
-/** The direction a port faces, away from the center of its shape, as a unit vector; none for a port at the center. */
+/**
+ * The direction a port faces, as a unit vector: that its anchor says (a point of a table faces away from its side), else
+ * away from the center of its shape; none for a port at the center.
+ */
 export function portDirection(shape: Outlined, port: string): Point {
-  const side = shape.type === "custom" ? anchorPoint(shape, port) : PORT_SIDES[port];
+  let side: Point | undefined = PORT_SIDES[port];
+  if (hasAnchors(shape)) {
+    const anchor = anchorNamed(shape, port);
+    side = anchor && (anchor.facing ?? anchorPoint(shape, anchor));
+  }
   if (!side || (side.x === 0 && side.y === 0)) return { x: 0, y: 0 };
   const turned = rotate(side, shape.rotation);
   const length = Math.hypot(turned.x, turned.y);

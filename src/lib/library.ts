@@ -5,6 +5,7 @@
 
 import { type Diagram, isRecord, isText, LABEL_PLACEMENTS, type LabelPlacement, listOf, newId, newShape, nextZ, oneOf, type Shape } from "./diagram.ts";
 import { type Anchor, type Outlined, type Point } from "./geometry.ts";
+import { tableAnchors } from "./table.ts";
 
 /** A definition of a custom shape. Its picture is an image of the storage (images.ts), which it needs to be saved. */
 export interface CustomShape {
@@ -114,8 +115,12 @@ export function pictureKeyOf(libraries: readonly ShapeLibrary[], shape: Shape): 
   return shape.type === "custom" ? definitionOf(libraries, shape)?.imageKey : shape.imageKey;
 }
 
-/** A shape as the geometry sees it: a custom shape has the anchors of its definition, none when it is deleted. */
+/**
+ * A shape as the geometry sees it: a custom shape has the anchors of its definition, none when it is deleted, and a table
+ * those of its cells. Any other shape has none, which is to have the eight ports of a rectangle.
+ */
 export function outlineOf(libraries: readonly ShapeLibrary[], shape: Shape): Outlined & Shape {
+  if (shape.type === "table") return { ...shape, anchors: tableAnchors(shape) };
   if (shape.type !== "custom") return shape;
   return { ...shape, anchors: definitionOf(libraries, shape)?.anchors ?? [] };
 }

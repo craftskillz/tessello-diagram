@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { addAnchor, readLibraries, renameAnchor } from "../src/lib/library.ts";
+import { newShape } from "../src/lib/diagram.ts";
+import { addAnchor, outlineOf, readLibraries, renameAnchor } from "../src/lib/library.ts";
+import { tableAnchors } from "../src/lib/table.ts";
 
 const image = `image:${"a".repeat(64)}`;
 
@@ -76,5 +78,21 @@ describe("the anchors of a definition, in the shape editor", () => {
 
   test("an anchor renamed to nothing keeps its identifier", () => {
     assert.deepEqual(renameAnchor(anchors, 1, "  ").map((anchor) => anchor.id), ["in", "out", "p3"]);
+  });
+});
+
+describe("a shape as the geometry sees it", () => {
+  test("a table has the anchors of its cells, from its columns as they are now", () => {
+    const table = { ...newShape("t", { x: 0, y: 0 }, 0, "table"), columns: [0.5, 0.25, 0.25] };
+    assert.deepEqual(outlineOf([], table).anchors, tableAnchors(table));
+  });
+
+  test("a rectangle has none, its ports are the eight of a rectangle", () => {
+    assert.equal(outlineOf([], newShape("r", { x: 0, y: 0 }, 0)).anchors, undefined);
+  });
+
+  test("a custom shape whose definition is deleted has none: an empty list, not the eight", () => {
+    const shape = { ...newShape("c", { x: 0, y: 0 }, 0, "custom"), customShapeRef: { libraryId: "l", shapeId: "s", name: "S" } };
+    assert.deepEqual(outlineOf([], shape).anchors, []);
   });
 });

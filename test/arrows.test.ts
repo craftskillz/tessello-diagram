@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { contains } from "../src/lib/geometry.ts";
+import { newShape } from "../src/lib/diagram.ts";
+import { contains, type Outlined } from "../src/lib/geometry.ts";
+import { outlineOf } from "../src/lib/library.ts";
+import { dragSeparator, setColumnCount, setRowCount, type TableChange } from "../src/lib/table.ts";
 import { arrowAt, constrainAngle, distanceTo, endAt, endOf, headOf, headsOf, isDrawable, labelPlacement, labelPoint, layoutArrows, type Path, pathWithin, pointAlong, shiftSegment, snapWaypoint, startOf } from "../src/lib/arrows.ts";
 
 const close = (actual: { x: number; y: number }, expected: { x: number; y: number }, within = 1e-9) => {
@@ -77,6 +80,61 @@ describe("an arrow attached to a custom shape", () => {
     const path = layoutArrows(new Map([["icon", gone], ["b", b]]), [{ id: "x", from: { shapeId: "icon", port: "right" }, to: { shapeId: "b", port: null }, route: "straight" }]).get("x")!;
     close(startOf(path), { x: 50, y: 0 });
     close(endOf(path), { x: 340, y: 0 });
+  });
+});
+
+describe("an arrow attached to a cell of a table", () => {
+  // 240 × 90 centered on the origin: three columns of 80 and three rows of 30.
+  const base = { ...newShape("t", { x: 0, y: 0 }, 0, "table"), w: 240, h: 90, z: 0, locked: false };
+  const table = outlineOf([], base);
+  const b = rect("b", 400, 300);
+  const arrow = (port: string | null, route: "straight" | "elbow" = "straight") =>
+    [{ id: "x", from: { shapeId: "t", port }, to: { shapeId: "b", port: null }, route }] as Parameters<typeof layoutArrows>[1];
+  const startFrom = (shape: Outlined, port: string | null, route: "straight" | "elbow" = "straight") =>
+    startOf(layoutArrows(new Map([["t", shape], ["b", b]]), arrow(port, route)).get("x")!);
+  /** The table after a change, as the geometry sees it. */
+  const changed = (change: TableChange) => outlineOf([], { ...base, ...change });
+
+  test("is attached to the point of a cell where it is released, and to none in an inner cell", () => {
+    assert.deepEqual(endAt([table], { x: -40, y: -45 }, 8).end, { shapeId: "t", port: "r0c0-NE" });
+    // The middle of the table is an inner cell: no port, automatic.
+    assert.deepEqual(endAt([table], { x: 0, y: 0 }, 8).end, { shapeId: "t", port: null });
+  });
+
+  test("starts on its cell point, and follows its cell when a column is resized", () => {
+    close(startFrom(table, "r2c1-S"), { x: 0, y: 45 });
+    // The first column widened by 40, its left side fixed: the table is 280 wide, centered on (20, 0), and the middle
+    // of the second column is at 20 from that center.
+    close(startFrom(changed(dragSeparator(base, 0, 40)), "r2c1-S"), { x: 40, y: 45 });
+  });
+
+  test("leaves an elbow perpendicular to the border", () => {
+    const path = layoutArrows(new Map<string, Outlined>([["t", table], ["b", b]]), arrow("r0c1-N", "elbow")).get("x")!;
+    assert.deepEqual(path.points[0], { x: 0, y: -45 });
+    assert.equal(path.points[1].x, 0);
+    assert.ok(path.points[1].y < -45);
+  });
+
+  test("follows the table when it is turned", () => {
+    const turned = { ...table, rotation: 90 };
+    // Turned by 90°, the middle of the top side is the middle of the right side on screen.
+    close(startFrom(turned, "r0c1-N"), { x: 45, y: 0 });
+  });
+
+  test("stays attached to its cell when rows or columns are added, while its point is still on the border", () => {
+    close(startFrom(changed(setColumnCount(base, 4)), "r0c0-NW"), { x: -120, y: -45 });
+    close(startFrom(changed(setRowCount(base, 5)), "r0c1-N"), { x: 0, y: -45 });
+  });
+
+  test("becomes automatic when its point is no longer on the border, or its cell is gone", () => {
+    // A point of the bottom side of the last row: once a row is added, it is inside the table.
+    const longer = changed(setRowCount(base, 4));
+    close(startFrom(longer, "r2c1-S"), startFrom(longer, null));
+    // The bottom-left corner of that row is still on the left side, and stays.
+    close(startFrom(longer, "r2c0-SW"), { x: -120, y: 45 });
+    // A point of the last column: once the column is removed, its cell is gone.
+    const narrower = changed(setColumnCount(base, 2));
+    close(startFrom(narrower, "r0c2-NE"), startFrom(narrower, null));
   });
 });
 

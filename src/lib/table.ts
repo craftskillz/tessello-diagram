@@ -4,7 +4,7 @@
 // columns, to be applied to the shape. The coordinates "in the frame" are those from its center, without its rotation.
 
 import { clampFontSize, type Shape } from "./diagram.ts";
-import { type Corner, cornerSign, type Point, rotate } from "./geometry.ts";
+import { type Anchor, type Corner, cornerSign, PORTS, type Point, rotate } from "./geometry.ts";
 
 /** The smallest width of a column, in units of the drawing. */
 export const MIN_COLUMN = 24;
@@ -46,6 +46,51 @@ export function cellAt(shape: Shape, point: Point): { row: number; col: number }
   const col = Math.max(0, edges.findIndex((edge, i) => i > 0 && local.x <= edge) - 1);
   const row = Math.min(rows - 1, Math.floor(((local.y + shape.h / 2) / shape.h) * rows));
   return { row, col };
+}
+
+/** An attachment point of a table: its cell, and its direction within the cell, are kept for the handles that offer it. */
+export interface TableAnchor extends Anchor {
+  facing: Point;
+  row: number;
+  col: number;
+  direction: (typeof PORTS)[number];
+}
+
+/** The attachment points of one cell of a table: none for a cell inside it. */
+export const cellAnchors = (shape: Shape, row: number, col: number): TableAnchor[] =>
+  tableAnchors(shape).filter((anchor) => anchor.row === row && anchor.col === col);
+
+/**
+ * The attachment points of a table: those of each cell that lie on the outer border of the table, from north
+ * clockwise in each cell, named `r1c2-NE` (row, column, direction within the cell, counted from 0). Neighbouring cells
+ * have their own points where they meet, so that an arrow is attached to a cell, and an inner cell has none. They are
+ * computed from the columns as they are now, as parts of the width and height from the top-left corner, so that an arrow
+ * follows its cell when a column is resized, and from the box of the table, when it is moved, resized or turned. Each
+ * faces outward from the side it lies on, diagonally at a corner of the table (its frame, before the rotation).
+ */
+export function tableAnchors(shape: Shape): TableAnchor[] {
+  const { cells, columns } = tableOf(shape);
+  const rows = cells.length;
+  const edges = columns.reduce((all, part) => [...all, all[all.length - 1] + part], [0]);
+  edges[edges.length - 1] = 1;
+  const anchors: TableAnchor[] = [];
+  cells.forEach((_, row) => {
+    columns.forEach((_, col) => {
+      for (const port of PORTS) {
+        const dx = port.includes("E") ? 1 : port.includes("W") ? -1 : 0;
+        const dy = port.includes("S") ? 1 : port.includes("N") ? -1 : 0;
+        const facing = {
+          x: dx === 1 && col === columns.length - 1 ? 1 : dx === -1 && col === 0 ? -1 : 0,
+          y: dy === 1 && row === rows - 1 ? 1 : dy === -1 && row === 0 ? -1 : 0,
+        };
+        if (facing.x === 0 && facing.y === 0) continue;
+        const x = dx === 0 ? (edges[col] + edges[col + 1]) / 2 : edges[dx === 1 ? col + 1 : col];
+        const y = (row + 0.5 + dy / 2) / rows;
+        anchors.push({ id: `r${row}c${col}-${port}`, x, y, facing, row, col, direction: port });
+      }
+    });
+  });
+  return anchors;
 }
 
 /** The box of a table, the widths of its columns, and when its cells change, its cells: what a change of the table sets on its shape. */

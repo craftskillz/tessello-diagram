@@ -186,6 +186,18 @@ describe("converting a diagram to draw.io", () => {
     assert.equal(cellOf(xml, "a1").attributes.parent, "1");
   });
 
+  test("an arrow attached to a cell of a table leaves at that cell's point", () => {
+    const diagram = newDiagram("d1", "Cells", 0);
+    diagram.shapes = [{ ...newShape("t1", { x: 0, y: 0 }, 0, "table"), w: 240, h: 90, columns: [0.25, 0.25, 0.5] }, newShape("web", { x: 0, y: 300 }, 1)];
+    diagram.arrows = [newArrow("a1", { shapeId: "t1", port: "r0c2-N" }, { shapeId: "web", port: "N" }, 2), newArrow("a2", { shapeId: "t1", port: "r1c1-N" }, { shapeId: "web", port: null }, 3)];
+    const { xml } = convert(diagram);
+    const exit = parseStyle(cellOf(xml, "a1").attributes.style);
+    // The middle of the top side of the third column: three quarters of the width, at the top.
+    assert.deepEqual([exit.exitX, exit.exitY, exit.exitPerimeter], ["0.75", "0", "0"]);
+    // The top of an inner cell is not on the border: automatic, nothing to set.
+    assert.equal(parseStyle(cellOf(xml, "a2").attributes.style).exitX, undefined);
+  });
+
   test("a table is a draw.io table with a row per row and a cell per cell, placed within it, with their texts", () => {
     const diagram = newDiagram("d1", "Tables", 0);
     diagram.shapes = [
@@ -253,7 +265,7 @@ describe("converting a diagram to draw.io", () => {
       { ...newShape("api", { x: 0, y: 0 }, 1), groupId: "g1" },
       newShape("web", { x: 0, y: 300 }, 2),
     ];
-    diagram.arrows = [newArrow("a1", { shapeId: "web", port: null }, { shapeId: "t1", port: "E" }, 3)];
+    diagram.arrows = [newArrow("a1", { shapeId: "web", port: null }, { shapeId: "t1", port: "r1c2-E" }, 3)];
     const { xml } = convert(diagram);
     const group = geometryOf(cellOf(xml, "g1").inner);
     assert.equal(cellOf(xml, "t1").attributes.parent, "g1");
@@ -262,7 +274,7 @@ describe("converting a diagram to draw.io", () => {
     assert.equal(cellOf(xml, "t1-r0").attributes.parent, "t1");
     const a1 = cellOf(xml, "a1");
     assert.equal(a1.attributes.target, "t1");
-    // The east port of a table is the middle of its right side, as for a rectangle.
+    // The east point of a cell of the right column, in the middle row, is the middle of the right side of the table.
     const arrow = parseStyle(a1.attributes.style);
     assert.deepEqual([arrow.entryX, arrow.entryY, arrow.entryPerimeter], ["1", "0.5", "0"]);
   });

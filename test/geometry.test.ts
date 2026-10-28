@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { arrowHead, boxWithin, connectionHandlePoint, connectionPort, degrees, outlinePoint, portPoint, portsOf, resizeBox, shapeAt } from "../src/lib/geometry.ts";
+import { arrowHead, boxWithin, connectionHandlePoint, connectionPort, degrees, outlinePoint, portDirection, portPoint, portsOf, resizeBox, shapeAt } from "../src/lib/geometry.ts";
+import { newShape } from "../src/lib/diagram.ts";
+import { tableAnchors } from "../src/lib/table.ts";
 
 const box = { x: 0, y: 0, w: 100, h: 40, rotation: 0 };
 
@@ -165,6 +167,8 @@ describe("the ports of a custom shape", () => {
   test("are the anchors of its definition, and none without one", () => {
     assert.deepEqual(portsOf(custom), ["in", "top"]);
     assert.deepEqual(portsOf({ type: "custom" }), []);
+    // A definition deleted gives an empty list of anchors, which is no port, not the eight of a rectangle.
+    assert.deepEqual(portsOf({ type: "custom", anchors: [] }), []);
   });
 
   test("are where its anchors are, scaled to its size", () => {
@@ -181,6 +185,45 @@ describe("the ports of a custom shape", () => {
   test("follow its rotation and its size together", () => {
     // 200 × 40 and turned by 90°: the point a quarter from the right of its top side is 50 below its center, 20 right.
     close(portPoint({ ...custom, x: 10, y: 10, w: 200, rotation: 90 }, "top"), { x: 30, y: 60 });
+  });
+});
+
+describe("the ports of a table", () => {
+  // 240 × 90 and three columns of 60, 60 and 120: its ports are those of its cells, given as anchors, not the eight of a rectangle.
+  const table = { type: "table" as const, x: 0, y: 0, w: 240, h: 90, rotation: 0, anchors: tableAnchors({ ...newShape("t", { x: 0, y: 0 }, 0, "table"), w: 240, h: 90, columns: [0.25, 0.25, 0.5] }) };
+
+  test("are the anchors of its cells, and not the eight of a rectangle", () => {
+    assert.ok(portsOf(table).includes("r0c1-N"));
+    assert.ok(!portsOf(table).includes("N"));
+    assert.ok(!portsOf(table).includes("r1c1-N"));
+    assert.equal(portsOf(table).length, 32);
+  });
+
+  test("are where the cells are on the border", () => {
+    close(portPoint(table, "r0c2-N"), { x: 60, y: -45 });
+    close(portPoint(table, "r2c0-SW"), { x: -120, y: 45 });
+    close(portPoint(table, "r1c2-E"), { x: 120, y: 0 });
+  });
+
+  test("face outward from their side, and follow the rotation", () => {
+    close(portDirection(table, "r0c1-N"), { x: 0, y: -1 });
+    close(portDirection(table, "r1c0-W"), { x: -1, y: 0 });
+    // The top-left corner of the table is diagonal, even in a table much wider than high.
+    close(portDirection(table, "r0c0-NW"), { x: -Math.SQRT1_2, y: -Math.SQRT1_2 });
+    // A point of the top side that is not at the middle still faces straight up, not away from the center.
+    close(portDirection(table, "r0c1-NE"), { x: 0, y: -1 });
+    // Turned by 90° clockwise, up is right on screen.
+    close(portDirection({ ...table, rotation: 90 }, "r0c1-N"), { x: 1, y: 0 });
+    close(portDirection({ ...table, rotation: 90 }, "r0c0-NW"), { x: Math.SQRT1_2, y: -Math.SQRT1_2 });
+  });
+
+  test("a connection from a side of the table starts at the nearest cell point", () => {
+    assert.equal(connectionPort(table, "W"), "r1c0-W");
+    assert.equal(connectionPort(table, "N"), "r0c1-NE");
+  });
+
+  test("a shape without anchors (not a table yet given its cells) keeps the eight", () => {
+    assert.deepEqual(portsOf({ type: "table" }), ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]);
   });
 });
 

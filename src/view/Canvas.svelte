@@ -14,7 +14,7 @@
   import { captionOf } from "../lib/images.ts";
   import { outlineOf, paletteOf, pictureKeyOf, placeCustomShape } from "../lib/library.ts";
   import { creation, diagrams, followLink, goBack, images, insertImage, redo, requestImages, save, shapeLibraries, type Tool, ui, undo } from "../lib/store.svelte.ts";
-  import { cellAt, cellBox, columnEdges, dragSeparator, resizeCorner, resizeSide, tableOf } from "../lib/table.ts";
+  import { cellAnchors, cellAt, cellBox, columnEdges, dragSeparator, resizeCorner, resizeSide, tableOf } from "../lib/table.ts";
   import { canvasMeasure, LABEL_PAD, layoutLabel, LINE_HEIGHT } from "../lib/text.ts";
   import ArrowPanel from "./ArrowPanel.svelte";
   import ArrowView from "./ArrowView.svelte";
@@ -54,6 +54,8 @@
   let spaceHeld = false;
   let capturedPointer: number | null = null;
   let hoveredId = $state<string | null>(null);
+  /** The cell of the hovered table the pointer was last in: its points are the ones that offer links, and they stay while the pointer travels out to them. */
+  let hoveredCell = $state<{ id: string; row: number; col: number } | null>(null);
 
   /** Where a free arrow was when a move started: its ends and its waypoints. */
   type Line = { id: string; from: Point; to: Point; waypoints: Point[] };
@@ -169,8 +171,33 @@
     return shape && !shape.locked ? shape : undefined;
   });
 
+  /**
+   * The link handles of a table: one for each point of the hovered cell, which exist only on the outer border of the
+   * table, so a cell inside has none. Each is offset outward from its point along the way the point faces, turned with
+   * the table. They must not cover the handles that resize or turn a selected table, and two of those are on every
+   * point's path: the side handle in the middle of a side (where the north point of a middle cell lies with 3 columns)
+   * reaches 5 screen pixels outside the border, and the circle that turns the table starts 20 pixels above it, under
+   * the other that turns the text, which starts 18 above. So these handles are small (a radius of 4.5 pixels, not 9)
+   * and 13 pixels out on each axis (a diagonal one too, which is clear of the corner handle): they span from 8.5 to
+   * 17.5 pixels out, between the two. The offset is in screen pixels, so that it stays so at any zoom.
+   */
+  const CELL_HANDLE_OFFSET = 13;
+  const cellHandles = $derived.by(() => {
+    const source = connectionSource;
+    if (source?.type !== "table" || hoveredCell?.id !== source.id || hoveredId !== source.id) return [];
+    const outline = outlines.get(source.id)!;
+    return cellAnchors(source, hoveredCell.row, hoveredCell.col).map(({ id, facing, direction }) => {
+      const on = portPoint(outline, id);
+      const out = rotate({ x: facing.x * CELL_HANDLE_OFFSET, y: facing.y * CELL_HANDLE_OFFSET }, source.rotation);
+      return { port: id, on, at: { x: on.x + out.x / zoom, y: on.y + out.y / zoom }, direction, turn: source.rotation + (Math.atan2(facing.x, -facing.y) * 180) / Math.PI };
+    });
+  });
+
   /** The corridor from each side to its handle keeps a hovered source reachable without a timer. */
   function overConnectionHandle(shape: Shape, at: Point): boolean {
+    if (shape.type === "table") {
+      return hoveredCell?.id === shape.id && cellHandles.some((handle) => distanceTo({ points: [handle.on, handle.at], controls: null }, at) <= reach(9));
+    }
     return CONNECTION_DIRECTIONS.some((direction) => {
       const side = portPoint(shape.type === "custom" ? { ...shape, type: undefined } : shape, direction);
       const handle = connectionHandlePoint(shape, direction, zoom);
@@ -234,10 +261,9 @@
     releaseCapture();
   }
 
-  function startConnection(event: PointerEvent, shape: Shape, direction: ConnectionDirection) {
+  function startConnection(event: PointerEvent, shape: Shape, port: string | null) {
     if (event.button !== 0 || spaceHeld) return;
-    const outline = outlines.get(shape.id)!;
-    capture(event, { kind: "draw", from: { shapeId: shape.id, port: connectionPort(outline, direction) }, press: { x: event.clientX, y: event.clientY }, at: toDrawing(event), moved: false });
+    capture(event, { kind: "draw", from: { shapeId: shape.id, port }, press: { x: event.clientX, y: event.clientY }, at: toDrawing(event), moved: false });
   }
 
   function onPointerDown(event: PointerEvent) {
@@ -321,6 +347,10 @@
       const previous = hoveredId ? shapes.get(hoveredId) : undefined;
       const corridorSource = pointer && previous && !contains(previous, pointer) && overConnectionHandle(previous, pointer) ? previous.id : null;
       hoveredId = handleSource ?? corridorSource ?? front?.id ?? null;
+      const over = hoveredId ? shapes.get(hoveredId) : undefined;
+      const cell = over?.type === "table" && pointer && contains(over, pointer) ? cellAt(over, pointer) : undefined;
+      if (over && cell) hoveredCell = { id: over.id, ...cell };
+      else if (hoveredCell && hoveredCell.id !== hoveredId) hoveredCell = null;
       return;
     }
     if (gesture.kind === "pan") {
@@ -849,7 +879,7 @@
     class:panning={gesture?.kind === "pan"}
     class:over-arrow={overArrow}
     onpointerdown={onPointerDown}
-    onpointerleave={() => { if (!gesture) { pointer = null; hoveredId = null; } }}
+    onpointerleave={() => { if (!gesture) { pointer = null; hoveredId = null; hoveredCell = null; } }}
     onmousedown={(event) => event.button === 1 && event.preventDefault()}
     ondblclick={onDoubleClick}
     onwheel={onWheel}
@@ -1045,7 +1075,25 @@
         {/each}
       {/if}
 
-      {#if connectionSource}
+      {#if connectionSource?.type === "table"}
+        {#each cellHandles as handle (handle.port)}
+          {@const label = t("connect_cell", { row: hoveredCell!.row + 1, col: hoveredCell!.col + 1, direction: t(`cell_direction_${handle.direction}`) })}
+          <g
+            role="button"
+            tabindex="-1"
+            aria-label={label}
+            class="dg-connect dg-connect-cell"
+            data-source={connectionSource.id}
+            data-port={handle.port}
+            transform="translate({handle.at.x} {handle.at.y}) rotate({handle.turn}) scale({1 / zoom})"
+            onpointerdown={(event) => startConnection(event, connectionSource, handle.port)}
+          >
+            <title>{label}</title>
+            <circle r="4.5" />
+            <path d="M0,-3L2.5,0.5H1V3H-1V0.5H-2.5Z" />
+          </g>
+        {/each}
+      {:else if connectionSource}
         {#each CONNECTION_DIRECTIONS as direction, index (direction)}
           {@const at = connectionHandlePoint(connectionSource, direction, zoom)}
           <g
@@ -1055,7 +1103,7 @@
             class="dg-connect"
             data-source={connectionSource.id}
             transform="translate({at.x} {at.y}) rotate({connectionSource.rotation + index * 90}) scale({1 / zoom})"
-            onpointerdown={(event) => startConnection(event, connectionSource, direction)}
+            onpointerdown={(event) => startConnection(event, connectionSource, connectionPort(outlines.get(connectionSource.id)!, direction))}
           >
             <title>{t(`connect_${direction}`)}</title>
             <circle r="9" />

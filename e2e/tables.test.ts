@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { until } from "@tessello/sdk/testing";
-import { at, dragHandle, newDiagram, openView, reload, saved, storedDiagram, tool, useBrowser } from "./diagram.ts";
+import { addRectangle, arrowEnds, at, canvas, clickAt, drag, dragHandle, middleOf, near, newDiagram, openView, reload, saved, storedDiagram, tool, useBrowser } from "./diagram.ts";
 
 useBrowser();
 
@@ -166,3 +166,121 @@ test("drags a column separator: only that column changes and the table widens, e
   const undone = await changed(host, turned, () => page.keyboard.press("ControlOrMeta+z"));
   assert.equal(undone.w, after.w);
 });
+
+type Opened = Awaited<ReturnType<typeof openView>>;
+type Table = Awaited<ReturnType<typeof selectedTable>>;
+
+const links = (page: Opened["page"]) => page.getByRole("button", { name: /^Link from cell/ });
+
+/** The middle of a cell of a table placed by the Table tool (equal columns), in page coordinates. */
+function cellSpot(page: Opened["page"], table: Table, row: number, col: number) {
+  const [rows, columns] = [table.cells!.length, table.cells![0].length];
+  return at(page, table.x - table.w / 2 + ((col + 0.5) * table.w) / columns, table.y - table.h / 2 + ((row + 0.5) * table.h) / rows);
+}
+
+test("hovering a cell on the border shows its points as link handles: 5 for a corner, 3 for an edge, none inside", async () => {
+  const opened = await openView();
+  const { page } = opened;
+  const table = await selectedTable(opened);
+  await tool(page, "Select (S)");
+  for (const [row, col, count] of [[0, 0, 5], [0, 1, 3], [1, 2, 3], [2, 2, 5], [1, 1, 0]] as const) {
+    const spot = await cellSpot(page, table, row, col);
+    await page.mouse.move(spot.x, spot.y);
+    await until(async () => (await links(page).count()) === count, `${count} link handles on cell ${row}, ${col}`);
+  }
+  const corner = await cellSpot(page, table, 0, 2);
+  await page.mouse.move(corner.x, corner.y);
+  await page.getByRole("button", { name: "Link from cell 1, 3 (top-right)" }).waitFor();
+});
+
+test("pulls a link from a cell point; the Arrow tool starts and ends on cell points; the arrow follows its cell when a column widens", async () => {
+  const opened = await openView();
+  const { page, host } = opened;
+  const table = await selectedTable(opened);
+  await addRectangle(opened, 400, 0, "Target");
+  await tool(page, "Select (S)");
+  const spot = await cellSpot(page, table, 0, 2);
+  await page.mouse.move(spot.x, spot.y);
+  const handle = page.getByRole("button", { name: "Link from cell 1, 3 (right)" });
+  await handle.waitFor();
+  await saved(host, async () => drag(page, await middleOf(handle), await at(page, 400, 0)));
+  let data = await storedDiagram(host);
+  assert.deepEqual(data.arrows[0].from, { shapeId: data.shapes[0].id, port: "r0c2-E" });
+  assert.equal(data.arrows[0].to.shapeId, data.shapes[1].id);
+
+  // The Arrow tool aims at the cell points of the table and ends on one.
+  await tool(page, "Arrow (F)");
+  const end = await at(page, table.x - table.w / 2, table.y + table.h / 2 - table.h / 6);
+  await page.mouse.move(end.x + 4, end.y);
+  await until(async () => (await canvas(page).locator('.dg-port[data-port="r2c0-W"]').count()) === 1, "the cell points to be shown");
+  await saved(host, async () => drag(page, await at(page, 400, 20), { x: end.x + 4, y: end.y }));
+  data = await storedDiagram(host);
+  assert.equal(data.arrows.length, 2);
+  assert.deepEqual(data.arrows[1].to, { shapeId: data.shapes[0].id, port: "r2c0-W" });
+
+  // Widening the first column moves the left border and keeps the left arrow on its cell, but not the right one.
+  await tool(page, "Select (S)");
+  await page.keyboard.press("Escape");
+  await clickAt(page, table.x, table.y);
+  const name = (await page.getByRole("img", { name: /^Arrow/ }).first().getAttribute("aria-label"))!;
+  const before = await arrowEnds(page, name);
+  await dragHandle(page, "Resize from the right side", 60, 0);
+  await until(async () => Math.abs((await arrowEnds(page, name)).start.x - before.start.x) > 20, "the arrow to follow its cell");
+});
+
+test("a cell's link handles never cover the resize, rotate or separator handles, at any zoom, and each handle keeps its own job", async () => {
+  const opened = await openView();
+  const { page, host } = opened;
+  const table = await selectedTable(opened);
+  await addRectangle(opened, 0, -260, "Above");
+  await tool(page, "Select (S)");
+  await clickAt(page, table.x, table.y);
+  const zoom = page.getByRole("group", { name: "Zoom" });
+  const rects = (selector: string) =>
+    page.locator(selector).evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect()).map(({ left, top, right, bottom }) => ({ left, top, right, bottom })));
+  for (const [button, times, percent] of [["Zoom in", 0, "100%"], ["Zoom in", 2, "156%"], ["Zoom out", 3, "51%"]] as const) {
+    await zoom.getByRole("button", { name: "Fit" }).click();
+    await zoom.getByText("100%", { exact: true }).waitFor();
+    for (let i = 0; i < times; i++) await zoom.getByRole("button", { name: button }).click();
+    await zoom.getByText(percent, { exact: true }).waitFor();
+    await page.mouse.move(0, 0);
+    for (const [row, col, count] of [[0, 1, 3], [0, 0, 5], [1, 0, 3]] as const) {
+      const spot = await cellSpot(page, table, row, col);
+      await page.mouse.move(spot.x, spot.y);
+      await until(async () => (await links(page).count()) === count, `${count} handles on cell ${row}, ${col} at ${percent}`);
+      const connect = await rects(".dg-connect");
+      const others = await rects(".dg-handle, .dg-handle-text, .dg-separator");
+      assert.ok(others.length >= 9);
+      for (const a of connect) {
+        for (const b of others) {
+          const apart = a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top;
+          assert.ok(apart, `a link handle ${JSON.stringify(a)} covers ${JSON.stringify(b)} at ${percent}`);
+        }
+      }
+    }
+  }
+  await zoom.getByRole("button", { name: "Fit" }).click();
+  await zoom.getByText("100%", { exact: true }).waitFor();
+
+  // With the middle top cell hovered, the top side handle still resizes and its N link handle still pulls an arrow.
+  const top = await cellSpot(page, table, 0, 1);
+  await page.mouse.move(top.x, top.y);
+  await links(page).first().waitFor();
+  const taller = await changedHeight(host, table.h, () => dragHandle(page, "Resize from the top side", 0, -30));
+  assert.ok(taller > table.h + 20);
+  const grown = (await storedDiagram(host)).shapes[0];
+  const hover = await cellSpot(page, grown, 0, 1);
+  await page.mouse.move(hover.x, hover.y);
+  const north = page.getByRole("button", { name: "Link from cell 1, 2 (top)" });
+  await north.waitFor();
+  await saved(host, async () => drag(page, await middleOf(north), await at(page, 0, -260)));
+  const data = await storedDiagram(host);
+  assert.deepEqual(data.arrows[0].from, { shapeId: data.shapes[0].id, port: "r0c1-N" });
+  assert.equal(data.arrows[0].to.shapeId, data.shapes[1].id);
+});
+
+async function changedHeight(host: Opened["host"], was: number, change: () => Promise<unknown>) {
+  await change();
+  await until(async () => (await storedDiagram(host)).shapes[0].h !== was, "the table to be stored with its new height");
+  return (await storedDiagram(host)).shapes[0].h;
+}

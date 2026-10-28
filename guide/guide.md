@@ -109,6 +109,8 @@ A selected table has more handles than other shapes:
 - The **corner handles** resize the whole table, text size included, keeping its proportions.
 - A **column separator**, dragged between two columns, changes only the column on its left: the table widens or narrows by the same amount, and its left side stays in place.
 
+To pull a link from a cell, hover it with the **Select** tool: the points of the cell appear just outside the border of the table, each with a small arrow. Drag one of them onto another shape, as for any link. A cell has points only where it touches the outer border of the table: a corner cell has 5, an edge cell 3, and a cell inside none, so a table has no other attachment points. The **Arrow** tool aims at the same points, at the start and at the end of an arrow. An arrow stays attached to its cell: it follows when a column is widened, and when the table is moved, resized or turned. If you remove the row or the column of an arrow, or if its point is no longer on the border (such as a point at the bottom of the last row once a row is added below it), the arrow becomes automatic and starts from the outline of the table.
+
 ### Default styles
 
 **Defaults** in the toolbar opens **Diagram defaults**: the arrowheads, line, route, width, color and label size of new arrows, and the width, height, text size and color of new shapes of each built-in type. Sizes go from 10 to 800, and text from 6 to 72: a value out of bounds is outlined in red, and nothing is saved until it is corrected. **Reset** brings back the factory values, saved when you click **Save**. A circle and an actor keep their proportions: their height follows their width.

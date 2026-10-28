@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { type Shape, newShape } from "../src/lib/diagram.ts";
-import { MAX_CELLS, MIN_COLUMN, MIN_ROW, cellAt, cellBox, columnEdges, dragSeparator, resizeCorner, resizeSide, setColumnCount, setRowCount } from "../src/lib/table.ts";
+import { MAX_CELLS, MIN_COLUMN, MIN_ROW, cellAt, cellBox, columnEdges, dragSeparator, resizeCorner, resizeSide, setColumnCount, setRowCount, tableAnchors } from "../src/lib/table.ts";
 
 /** A table of 240 × 90 centered on (100, 50): three columns of 60, 60 and 120, and three rows of 30. */
 function table(fields: Partial<Shape> = {}): Shape {
@@ -174,5 +174,63 @@ describe("resizing a table by a corner handle", () => {
     assert.equal(small.fontSize, 6);
     near(small.w, 96);
     near(small.h, 36);
+  });
+});
+
+describe("the anchors of a table", () => {
+  const cells = (rows: number, cols: number) => Array.from({ length: rows }, () => Array.from({ length: cols }, () => ""));
+  const grid = (rows: number, cols: number, fields: Partial<Shape> = {}) => table({ cells: cells(rows, cols), columns: Array.from({ length: cols }, () => 1 / cols), ...fields });
+  const idsOf = (shape: Shape, cell: string) => tableAnchors(shape).filter((anchor) => anchor.id.startsWith(`${cell}-`)).map((anchor) => anchor.id.slice(cell.length + 1));
+
+  test("a corner cell has five points, an edge cell three, an inner cell none", () => {
+    const nine = grid(3, 3);
+    assert.deepEqual(idsOf(nine, "r0c0"), ["N", "NE", "SW", "W", "NW"].sort((a, b) => ["N", "NE", "E", "SE", "S", "SW", "W", "NW"].indexOf(a) - ["N", "NE", "E", "SE", "S", "SW", "W", "NW"].indexOf(b)));
+    assert.deepEqual(idsOf(nine, "r0c1"), ["N", "NE", "NW"]);
+    assert.deepEqual(idsOf(nine, "r1c2"), ["NE", "E", "SE"]);
+    assert.deepEqual(idsOf(nine, "r1c1"), []);
+    assert.equal(tableAnchors(nine).length, 4 * 5 + 4 * 3);
+  });
+
+  test("a table of a single cell has all eight, a single row has more on its middle cells", () => {
+    assert.deepEqual(idsOf(grid(1, 1), "r0c0"), ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]);
+    assert.deepEqual(idsOf(grid(1, 3), "r0c1"), ["N", "NE", "S", "SW", "SE", "NW"].sort((a, b) => ["N", "NE", "E", "SE", "S", "SW", "W", "NW"].indexOf(a) - ["N", "NE", "E", "SE", "S", "SW", "W", "NW"].indexOf(b)));
+  });
+
+  test("two neighbouring cells have their own name for a point at the same place", () => {
+    const anchors = tableAnchors(grid(3, 3));
+    const a = anchors.find((anchor) => anchor.id === "r0c0-NE")!;
+    const b = anchors.find((anchor) => anchor.id === "r0c1-NW")!;
+    assert.deepEqual([a.x, a.y], [b.x, b.y]);
+    assert.equal(new Set(anchors.map((anchor) => anchor.id)).size, anchors.length);
+  });
+
+  test("are parts of the width and height, from the columns as they are now", () => {
+    // Columns of 0.25, 0.25 and 0.5 of the width; three rows.
+    const anchors = tableAnchors(table());
+    const at = (id: string) => anchors.find((anchor) => anchor.id === id)!;
+    near(at("r0c0-NW").x, 0);
+    near(at("r0c0-N").x, 0.125);
+    near(at("r0c2-N").x, 0.75);
+    near(at("r0c2-NE").x, 1);
+    near(at("r1c0-W").y, 0.5);
+    near(at("r2c1-S").x, 0.375);
+    near(at("r2c1-S").y, 1);
+    // Resizing a column moves the points with it.
+    const wider = tableAnchors(table({ columns: [0.5, 0.25, 0.25] }));
+    near(wider.find((anchor) => anchor.id === "r0c0-NE")!.x, 0.5);
+  });
+
+  test("face outward from the side they are on, and diagonally at a corner of the table", () => {
+    const anchors = tableAnchors(table());
+    const facing = (id: string) => anchors.find((anchor) => anchor.id === id)!.facing;
+    assert.deepEqual(facing("r0c1-N"), { x: 0, y: -1 });
+    assert.deepEqual(facing("r0c1-NE"), { x: 0, y: -1 });
+    assert.deepEqual(facing("r1c0-W"), { x: -1, y: 0 });
+    assert.deepEqual(facing("r2c2-S"), { x: 0, y: 1 });
+    assert.deepEqual(facing("r1c2-E"), { x: 1, y: 0 });
+    assert.deepEqual(facing("r0c0-NW"), { x: -1, y: -1 });
+    assert.deepEqual(facing("r2c2-SE"), { x: 1, y: 1 });
+    // A corner of a cell on the top side only is not a corner of the table.
+    assert.deepEqual(facing("r0c0-NE"), { x: 0, y: -1 });
   });
 });
