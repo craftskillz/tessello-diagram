@@ -65,6 +65,8 @@ export type Tool = "select" | "arrow" | BuiltInType | "image" | "custom";
 
 /** What the User is doing on the canvas, shared by the toolbar and the canvas. */
 export const ui = $state({
+  /** Whether the list of diagrams is shown: kept while the View is open, shown again on the next load. */
+  sidebarOpen: true,
   /** The canvas of the open diagram, or the shape editor: the View moves between them without the history of the browser. */
   screen: "diagram" as "diagram" | "shapes",
   tool: "select" as Tool,

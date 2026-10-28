@@ -5,8 +5,9 @@
   import { ask } from "../lib/confirmation.svelte.ts";
   import type { DiagramEntry } from "../lib/diagram.ts";
   import { t, titleOf } from "../lib/i18n.ts";
-  import { create, diagrams, importFiles, openFromList, remove, status } from "../lib/store.svelte.ts";
+  import { create, diagrams, importFiles, openFromList, remove, status, ui } from "../lib/store.svelte.ts";
   import { ALERT, QUOTA, usageText } from "../lib/usage.ts";
+  import SidebarToggle, { SIDEBAR_ID } from "./SidebarToggle.svelte";
 
   let chooser: HTMLInputElement;
 
@@ -22,9 +23,12 @@
   }
 </script>
 
-<nav class="dg-sidebar" aria-label={t("sidebar_title")}>
+<nav class="dg-sidebar" id={SIDEBAR_ID} aria-label={t("sidebar_title")} hidden={!ui.sidebarOpen}>
   <div class="dg-sidebar-head">
-    <h2>{t("sidebar_title")}</h2>
+    <div class="dg-sidebar-title">
+      <h2>{t("sidebar_title")}</h2>
+      <SidebarToggle />
+    </div>
     <div class="dg-actions">
       <button type="button" class="dg-btn" title={t("sidebar_import_hint")} onclick={() => chooser.click()}>{t("sidebar_import")}</button>
       <button type="button" class="dg-btn" onclick={create}>{t("sidebar_new")}</button>
@@ -72,8 +76,19 @@
   .dg-sidebar-head {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     justify-content: space-between;
+    gap: 8px 6px;
     padding: 12px;
+  }
+  .dg-sidebar[hidden] {
+    display: none;
+  }
+  .dg-sidebar-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
   }
   .dg-actions {
     display: flex;

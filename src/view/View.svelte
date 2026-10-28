@@ -5,6 +5,7 @@
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import ShapeEditor from "./ShapeEditor.svelte";
   import Sidebar from "./Sidebar.svelte";
+  import SidebarToggle from "./SidebarToggle.svelte";
   import Toolbar from "./Toolbar.svelte";
 </script>
 
@@ -56,6 +57,9 @@
           <Canvas diagram={diagrams.open} />
         </div>
       {:else}
+        {#if !ui.sidebarOpen}
+          <header class="dg-bar"><SidebarToggle /></header>
+        {/if}
         <p class="dg-message">{t("empty_state")}</p>
       {/if}
     </main>
@@ -74,6 +78,11 @@
     min-width: 0;
     display: flex;
     flex-direction: column;
+  }
+  .dg-bar {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--line);
+    background: var(--panel);
   }
   .dg-stage {
     flex: 1;

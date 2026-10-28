@@ -29,6 +29,8 @@ Every change is saved the moment you finish it. There is no Save button.
 
 The list on the left holds your diagrams. Click **+ New** to create one: it opens at once, titled **New diagram**. Click a title to open that diagram. Rename the open diagram in the title field at the top; an empty title becomes **Untitled**.
 
+The burger button next to **Diagrams** hides the list to give the canvas more room. The same button in the top bar shows it again.
+
 To delete a diagram, point at it in the list and click **×**, then confirm. A deleted diagram cannot be brought back.
 
 On the Home, the Diagram Widget lists the four diagrams you changed last, with how long ago. Click one to open it, or **+ New** to open a new diagram.

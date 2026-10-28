@@ -6,6 +6,7 @@
   import DefaultsDialog from "./DefaultsDialog.svelte";
   import { exportDrawio, exportPng } from "./exports.ts";
   import SaveStatus from "./SaveStatus.svelte";
+  import SidebarToggle from "./SidebarToggle.svelte";
 
   const TOOLS: { tool: Tool; label: () => string; icon: string }[] = [
     { tool: "select", label: () => t("tool_select"), icon: "M5 3l14 8-6 2-3 6z" },
@@ -34,6 +35,9 @@
 </script>
 
 <header class="dg-toolbar">
+  {#if !ui.sidebarOpen}
+    <SidebarToggle />
+  {/if}
   <input
     class="dg-title"
     aria-label={t("title_label")}

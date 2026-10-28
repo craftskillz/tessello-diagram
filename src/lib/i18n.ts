@@ -10,6 +10,8 @@ const en = {
 
   sidebar_title: "Diagrams",
   sidebar_new: "+ New",
+  sidebar_hide: "Hide diagrams",
+  sidebar_show: "Show diagrams",
   sidebar_import: "Import",
   sidebar_import_hint: "Import the files of the living-documentation editor: .diagrams.json, .shape-libraries.json and their images",
   import_title: "Import these files?",
@@ -326,6 +328,8 @@ const fr: Messages = {
 
   sidebar_title: "Diagrammes",
   sidebar_new: "+ Nouveau",
+  sidebar_hide: "Masquer les diagrammes",
+  sidebar_show: "Afficher les diagrammes",
   sidebar_import: "Importer",
   sidebar_import_hint: "Importer les fichiers de l'éditeur de living-documentation : .diagrams.json, .shape-libraries.json et leurs images",
   import_title: "Importer ces fichiers ?",
