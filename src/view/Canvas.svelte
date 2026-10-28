@@ -174,14 +174,16 @@
   /**
    * The link handles of a table: one for each point of the hovered cell, which exist only on the outer border of the
    * table, so a cell inside has none. Each is offset outward from its point along the way the point faces, turned with
-   * the table. They must not cover the handles that resize or turn a selected table, and two of those are on every
-   * point's path: the side handle in the middle of a side (where the north point of a middle cell lies with 3 columns)
-   * reaches 5 screen pixels outside the border, and the circle that turns the table starts 20 pixels above it, under
-   * the other that turns the text, which starts 18 above. So these handles are small (a radius of 4.5 pixels, not 9)
-   * and 13 pixels out on each axis (a diagonal one too, which is clear of the corner handle): they span from 8.5 to
-   * 17.5 pixels out, between the two. The offset is in screen pixels, so that it stays so at any zoom.
+   * the table, and has the size of the link handles of other shapes (a radius of 9 pixels). They must not cover the
+   * handles that resize or turn a selected table: the side handle in the middle of a side (where the north point of a
+   * middle cell lies with 3 columns) reaches 5 screen pixels outside the border, so these handles are 15 pixels out on
+   * each axis (a diagonal one too, which is clear of the corner handle) and span from 6 to 24 pixels out; the circle
+   * that turns a table is raised to start beyond them (see `TABLE_STEM`). The offset is in screen pixels, so that it
+   * stays so at any zoom.
    */
-  const CELL_HANDLE_OFFSET = 13;
+  const CELL_HANDLE_OFFSET = 15;
+  /** The stem of a table's rotation handle, longer than the 26 pixels of other shapes, so the circle starts 30 pixels out. */
+  const TABLE_STEM = 36;
   const cellHandles = $derived.by(() => {
     const source = connectionSource;
     if (source?.type !== "table" || hoveredCell?.id !== source.id || hoveredId !== source.id) return [];
@@ -1089,8 +1091,8 @@
             onpointerdown={(event) => startConnection(event, connectionSource, handle.port)}
           >
             <title>{label}</title>
-            <circle r="4.5" />
-            <path d="M0,-3L2.5,0.5H1V3H-1V0.5H-2.5Z" />
+            <circle r="9" />
+            <path d="M0,-6L5,0H2V5H-2V0H-5Z" />
           </g>
         {/each}
       {:else if connectionSource}
@@ -1115,7 +1117,7 @@
       {#if withHandles}
         {@const shape = withHandles}
         {@const size = 5 / zoom}
-        {@const stem = 26 / zoom}
+        {@const stem = (shape.type === "table" ? TABLE_STEM : 26) / zoom}
         <g class="dg-handles" transform="translate({shape.x} {shape.y}) rotate({shape.rotation})">
           <line class="dg-stem" x1="0" y1={-shape.h / 2} x2="0" y2={-shape.h / 2 - stem} stroke-width={1 / zoom} />
           {#each CORNERS as corner (corner)}
@@ -1172,17 +1174,20 @@
             stroke-width={1.5 / zoom}
             onpointerdown={(event) => startRotate(event, shape, false)}
           />
-          <g
-            role="button"
-            tabindex="-1"
-            aria-label={t("rotate_text_handle")}
-            class="dg-handle-text"
-            transform="translate({-stem} {-shape.h / 2 - stem})"
-            onpointerdown={(event) => startRotate(event, shape, true)}
-          >
-            <circle class="dg-handle" r={size * 1.6} stroke-width={1.5 / zoom} />
-            <text font-size={size * 2} text-anchor="middle" dominant-baseline="central">T</text>
-          </g>
+          <!-- A table's text turns with the table, never apart from it. -->
+          {#if shape.type !== "table"}
+            <g
+              role="button"
+              tabindex="-1"
+              aria-label={t("rotate_text_handle")}
+              class="dg-handle-text"
+              transform="translate({-stem} {-shape.h / 2 - stem})"
+              onpointerdown={(event) => startRotate(event, shape, true)}
+            >
+              <circle class="dg-handle" r={size * 1.6} stroke-width={1.5 / zoom} />
+              <text font-size={size * 2} text-anchor="middle" dominant-baseline="central">T</text>
+            </g>
+          {/if}
         </g>
       {/if}
     </g>

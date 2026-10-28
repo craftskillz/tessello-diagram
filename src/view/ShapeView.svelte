@@ -131,7 +131,7 @@
   {#if grid}
     {#each grid.cells as { row, col, layout } (`${row}/${col}`)}
       {#if layout && !(editingCell?.row === row && editingCell?.col === col)}
-        <text font-size={shape.fontSize} text-anchor={layout.anchor} dominant-baseline="central" transform="rotate({shape.textRotation})">
+        <text font-size={shape.fontSize} text-anchor={layout.anchor} dominant-baseline="central">
           {#each layout.lines as line, index}
             <tspan x={layout.x} y={layout.y + index * layout.lineHeight}>{line}</tspan>
           {/each}

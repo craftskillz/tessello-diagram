@@ -93,7 +93,7 @@ Drag the label to slide it along the arrow, or away from it on either side: it k
 
 Drag a corner of the selected shape to resize it. Hold **Shift** to keep its proportions; an actor and a circle always keep them. The button at the top chooses whether the opposite corner or the center stays in place.
 
-Drag the round handle above the shape to turn it (**Shift** turns by steps of 15°), or use the rotation buttons of the panel, by 10°. The handle marked **T** turns the text alone.
+Drag the round handle above the shape to turn it (**Shift** turns by steps of 15°), or use the rotation buttons of the panel, by 10°. The handle marked **T** turns the text alone; a table has none, as its text always turns with it.
 
 The panel on the right styles every selected shape: its color, the opacity of its background, the size and alignment of its text, and whether it is in front of or behind the others.
 
@@ -109,7 +109,7 @@ A selected table has more handles than other shapes:
 - The **corner handles** resize the whole table, text size included, keeping its proportions.
 - A **column separator**, dragged between two columns, changes only the column on its left: the table widens or narrows by the same amount, and its left side stays in place.
 
-To pull a link from a cell, hover it with the **Select** tool: the points of the cell appear just outside the border of the table, each with a small arrow. Drag one of them onto another shape, as for any link. A cell has points only where it touches the outer border of the table: a corner cell has 5, an edge cell 3, and a cell inside none, so a table has no other attachment points. The **Arrow** tool aims at the same points, at the start and at the end of an arrow. An arrow stays attached to its cell: it follows when a column is widened, and when the table is moved, resized or turned. If you remove the row or the column of an arrow, or if its point is no longer on the border (such as a point at the bottom of the last row once a row is added below it), the arrow becomes automatic and starts from the outline of the table.
+To pull a link from a cell, hover it with the **Select** tool: the points of the cell appear just outside the border of the table, each with the same arrow as the link handles of other shapes. Drag one of them onto another shape, as for any link. A cell has points only where it touches the outer border of the table: a corner cell has 5, an edge cell 3, and a cell inside none, so a table has no other attachment points. The **Arrow** tool aims at the same points, at the start and at the end of an arrow. An arrow stays attached to its cell: it follows when a column is widened, and when the table is moved, resized or turned. If you remove the row or the column of an arrow, or if its point is no longer on the border (such as a point at the bottom of the last row once a row is added below it), the arrow becomes automatic and starts from the outline of the table.
 
 ### Default styles
 

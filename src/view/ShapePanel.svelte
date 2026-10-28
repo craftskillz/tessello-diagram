@@ -177,11 +177,14 @@
       <button type="button" class="dg-btn" aria-label={t("rotate_left")} title={t("rotate_left")} onclick={() => apply((shape) => (shape.rotation = degrees(shape.rotation - 10)))}>↺ 10°</button>
       <button type="button" class="dg-btn" aria-label={t("rotate_right")} title={t("rotate_right")} onclick={() => apply((shape) => (shape.rotation = degrees(shape.rotation + 10)))}>↻ 10°</button>
     </div>
-    <div class="dg-row">
-      <span class="dg-label">{t("text_rotation")}</span>
-      <button type="button" class="dg-btn" aria-label={t("rotate_text_left")} title={t("rotate_text_left")} onclick={() => apply((shape) => (shape.textRotation = degrees(shape.textRotation - 10)))}>↺ 10°</button>
-      <button type="button" class="dg-btn" aria-label={t("rotate_text_right")} title={t("rotate_text_right")} onclick={() => apply((shape) => (shape.textRotation = degrees(shape.textRotation + 10)))}>↻ 10°</button>
-    </div>
+    <!-- A table's text turns with the table only. -->
+    {#if !shapes.every((shape) => shape.type === "table")}
+      <div class="dg-row">
+        <span class="dg-label">{t("text_rotation")}</span>
+        <button type="button" class="dg-btn" aria-label={t("rotate_text_left")} title={t("rotate_text_left")} onclick={() => apply((shape) => (shape.textRotation = degrees(shape.textRotation - 10)))}>↺ 10°</button>
+        <button type="button" class="dg-btn" aria-label={t("rotate_text_right")} title={t("rotate_text_right")} onclick={() => apply((shape) => (shape.textRotation = degrees(shape.textRotation + 10)))}>↻ 10°</button>
+      </div>
+    {/if}
 
     <div class="dg-row">
       <button type="button" class="dg-btn" onclick={() => order("front")}>{t("bring_to_front")}</button>

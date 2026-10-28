@@ -274,7 +274,7 @@ function labelCell(arrow: Arrow): string {
 
 /**
  * The `.drawio` file of a diagram. `libraries` give custom shapes their picture and anchors, and `images` the data URLs
- * of the pictures, by key. `droppedRotations` counts what draw.io cannot show: a text turned apart from its shape.
+ * of the pictures, by key. `droppedRotations` counts what draw.io cannot show: a text turned apart from its shape (a table's never is).
  */
 export function toDrawio(diagram: Diagram, libraries: readonly ShapeLibrary[], images: Readonly<Record<string, string | null>>): { xml: string; droppedRotations: number } {
   const pictureOf = (shape: Shape): Picture => {
@@ -300,7 +300,7 @@ export function toDrawio(diagram: Diagram, libraries: readonly ShapeLibrary[], i
     `<mxfile host="Tessello" type="device"><diagram id="${attribute(diagram.id)}" name="${attribute(diagram.title)}">` +
     `<mxGraphModel grid="${diagram.grid ? 1 : 0}" gridSize="20" guides="${diagram.guides ? 1 : 0}" page="0" math="0" shadow="0">` +
     `<root><mxCell id="0"/><mxCell id="${LAYER}" parent="0"/>${cells.join("")}</root></mxGraphModel></diagram></mxfile>`;
-  return { xml, droppedRotations: diagram.shapes.filter((shape) => degrees(shape.textRotation) !== 0).length };
+  return { xml, droppedRotations: diagram.shapes.filter((shape) => shape.type !== "table" && degrees(shape.textRotation) !== 0).length };
 }
 
 /** The longest name of an exported file, before its extension. */

@@ -248,9 +248,17 @@ test("a cell's link handles never cover the resize, rotate or separator handles,
       const spot = await cellSpot(page, table, row, col);
       await page.mouse.move(spot.x, spot.y);
       await until(async () => (await links(page).count()) === count, `${count} handles on cell ${row}, ${col} at ${percent}`);
-      const connect = await rects(".dg-connect");
-      const others = await rects(".dg-handle, .dg-handle-text, .dg-separator");
+      // A link handle is a circle, measured from its center: the box of its turned group is wider than it.
+      const connect = (await rects(".dg-connect circle")).map(({ left, top, right, bottom }) => {
+        const [x, y, r] = [(left + right) / 2, (top + bottom) / 2, 9];
+        return { left: x - r, top: y - r, right: x + r, bottom: y + r };
+      });
+      const others = await rects(".dg-handle, .dg-separator");
       assert.ok(others.length >= 9);
+      // They have the size of the link handles of other shapes, and a table has no handle that turns its text alone.
+      const size = await page.locator(".dg-connect circle").first().getAttribute("r");
+      assert.equal(size, "9");
+      assert.equal(await page.locator(".dg-handle-text").count(), 0);
       for (const a of connect) {
         for (const b of others) {
           const apart = a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top;
