@@ -186,6 +186,87 @@ describe("converting a diagram to draw.io", () => {
     assert.equal(cellOf(xml, "a1").attributes.parent, "1");
   });
 
+  test("a table is a draw.io table with a row per row and a cell per cell, placed within it, with their texts", () => {
+    const diagram = newDiagram("d1", "Tables", 0);
+    diagram.shapes = [
+      {
+        ...newShape("t1", { x: 200, y: 100 }, 0, "table"),
+        w: 200,
+        h: 80,
+        color: "c-blue",
+        rotation: 30,
+        opacity: 0.5,
+        fontSize: 18,
+        textAlign: "left",
+        textValign: "top",
+        cells: [["Name & <id>", "x"], ["two\nlines", ""]],
+        columns: [0.25, 0.75],
+      },
+    ];
+    const { xml } = convert(diagram);
+    const table = cellOf(xml, "t1");
+    assert.equal(table.attributes.vertex, "1");
+    assert.equal(table.attributes.parent, "1");
+    assert.deepEqual(geometryOf(table.inner), { x: "100", y: "60", width: "200", height: "80", as: "geometry" });
+    const style = parseStyle(table.attributes.style);
+    assert.equal(style.shape, "table");
+    assert.deepEqual([style.startSize, style.container, style.collapsible, style.childLayout], ["0", "1", "0", "tableLayout"]);
+    assert.deepEqual([style.fillColor, style.strokeColor, style.fontColor], ["#dbeafe", "#3b82f6", "#1e40af"]);
+    assert.deepEqual([style.fillOpacity, style.rotation, style.fontSize], ["50", "30", "18"]);
+
+    // A row is as wide as the table, and as high as its share of it, from the top of the table.
+    for (const [row, y] of [["t1-r0", "0"], ["t1-r1", "40"]]) {
+      const cell = cellOf(xml, row);
+      assert.equal(cell.attributes.vertex, "1");
+      assert.equal(cell.attributes.parent, "t1");
+      assert.deepEqual(geometryOf(cell.inner), { y, width: "200", height: "40", as: "geometry" });
+      const rowStyle = parseStyle(cell.attributes.style);
+      assert.equal(rowStyle.shape, "tableRow");
+      assert.equal(rowStyle.portConstraint, "eastwest");
+      assert.equal(rowStyle.fillColor, "none");
+    }
+    // A cell is as wide as its column, from the left of the table; the text is escaped, and its lines kept.
+    const expected = [
+      ["t1-r0-c0", "t1-r0", "Name &amp;amp; &amp;lt;id&amp;gt;", "0", "50"],
+      ["t1-r0-c1", "t1-r0", "x", "50", "150"],
+      ["t1-r1-c0", "t1-r1", "two&lt;br&gt;lines", "0", "50"],
+      ["t1-r1-c1", "t1-r1", "", "50", "150"],
+    ];
+    for (const [id, parent, value, x, width] of expected) {
+      const cell = cellOf(xml, id);
+      assert.equal(cell.attributes.parent, parent);
+      assert.equal(cell.attributes.value, value);
+      assert.deepEqual(geometryOf(cell.inner), { x, width, height: "40", as: "geometry" });
+      const cellStyle = parseStyle(cell.attributes.style);
+      assert.equal(cellStyle.shape, "partialRectangle");
+      assert.equal(cellStyle.connectable, "0");
+      assert.deepEqual([cellStyle.fontSize, cellStyle.fontColor, cellStyle.align, cellStyle.verticalAlign], ["18", "#1e40af", "left", "top"]);
+    }
+    // A parent comes before its children.
+    assert.ok(xml.indexOf('id="t1"') < xml.indexOf('id="t1-r0"') && xml.indexOf('id="t1-r0"') < xml.indexOf('id="t1-r0-c0"'));
+  });
+
+  test("a grouped table is placed within its group, and an arrow attached to a table keeps it and its ports", () => {
+    const diagram = newDiagram("d1", "Tables", 0);
+    diagram.shapes = [
+      { ...newShape("t1", { x: 200, y: 100 }, 0, "table"), w: 200, h: 80, groupId: "g1" },
+      { ...newShape("api", { x: 0, y: 0 }, 1), groupId: "g1" },
+      newShape("web", { x: 0, y: 300 }, 2),
+    ];
+    diagram.arrows = [newArrow("a1", { shapeId: "web", port: null }, { shapeId: "t1", port: "E" }, 3)];
+    const { xml } = convert(diagram);
+    const group = geometryOf(cellOf(xml, "g1").inner);
+    assert.equal(cellOf(xml, "t1").attributes.parent, "g1");
+    assert.deepEqual(geometryOf(cellOf(xml, "t1").inner), { x: String(100 - Number(group.x)), y: String(60 - Number(group.y)), width: "200", height: "80", as: "geometry" });
+    // Its rows and cells stay within the table, not the group.
+    assert.equal(cellOf(xml, "t1-r0").attributes.parent, "t1");
+    const a1 = cellOf(xml, "a1");
+    assert.equal(a1.attributes.target, "t1");
+    // The east port of a table is the middle of its right side, as for a rectangle.
+    const arrow = parseStyle(a1.attributes.style);
+    assert.deepEqual([arrow.entryX, arrow.entryY, arrow.entryPerimeter], ["1", "0.5", "0"]);
+  });
+
   test("an image embeds its picture as a data URL, and a custom shape that of its definition, with its anchors and where its text goes", () => {
     const diagram = newDiagram("d1", "Images", 0);
     const libraries: ShapeLibrary[] = [

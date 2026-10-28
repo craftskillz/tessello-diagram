@@ -6,6 +6,7 @@
   import { isBuiltIn, shapeAsDefault } from "../lib/defaults.ts";
   import { clampFontSize, COLORS, FONT_SIZES, groupShapes, LABEL_PLACEMENTS, type LabelPlacement, reorder, type Shape, ungroupShapes } from "../lib/diagram.ts";
   import { degrees } from "../lib/geometry.ts";
+  import { MAX_CELLS, setColumnCount, setRowCount, tableOf } from "../lib/table.ts";
   import { t } from "../lib/i18n.ts";
   import { creation, diagrams, save, saveDefaults, ui } from "../lib/store.svelte.ts";
   import LinkDialog from "./LinkDialog.svelte";
@@ -137,6 +138,27 @@
         {/each}
       </div>
     </div>
+
+    {#if shapes.every((shape) => shape.type === "table")}
+      <!-- The rows and columns of the tables: the value they share, or none when they differ. -->
+      {#each [{ label: "table_rows", count: (shape: Shape) => tableOf(shape).cells.length, set: setRowCount }, { label: "table_columns", count: (shape: Shape) => tableOf(shape).cells[0].length, set: setColumnCount }] as { label, count, set } (label)}
+        {@const value = shapes.every((shape) => count(shape) === count(first)) ? count(first) : ""}
+        <label class="dg-field">
+          <span>{t(label as "table_rows" | "table_columns")}</span>
+          <input
+            type="number"
+            min="1"
+            max={MAX_CELLS}
+            {value}
+            onchange={(event) => {
+              const next = event.currentTarget.valueAsNumber;
+              if (Number.isFinite(next)) apply((shape) => Object.assign(shape, set(shape, next)));
+              event.currentTarget.value = String(shapes.every((shape) => count(shape) === count(first)) ? count(first) : "");
+            }}
+          />
+        </label>
+      {/each}
+    {/if}
 
     {#if shapes.every((shape) => shape.type === "custom")}
       <!-- Where the text of a custom shape goes, taken from its definition, changed on these shapes only. -->

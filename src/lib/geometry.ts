@@ -16,7 +16,7 @@ export interface Box extends Point {
 }
 
 /** Turns a point around the origin by `degrees`, clockwise on screen. */
-function rotate({ x, y }: Point, degrees: number): Point {
+export function rotate({ x, y }: Point, degrees: number): Point {
   const radians = (degrees * Math.PI) / 180;
   const cos = Math.cos(radians);
   const sin = Math.sin(radians);

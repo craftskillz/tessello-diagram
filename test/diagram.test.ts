@@ -266,3 +266,45 @@ describe("groups", () => {
     assert.deepEqual(diagram.shapes.map((shape) => shape.groupId), [null, null, null]);
   });
 });
+
+describe("a table", () => {
+  const read = (fields: object) => readDiagram({ shapes: [{ id: "t1", x: 0, y: 0, type: "table", ...fields }] }, "d1").shapes[0];
+
+  test("is created with 3 × 3 empty cells and equal columns", () => {
+    const table = newShape("t1", { x: 0, y: 0 }, 0, "table");
+    assert.deepEqual([table.w, table.h, table.color], [240, 90, "c-gray"]);
+    assert.deepEqual(table.cells, [["", "", ""], ["", "", ""], ["", "", ""]]);
+    assert.deepEqual(table.columns, [1 / 3, 1 / 3, 1 / 3]);
+  });
+
+  test("is read back with its cells and column widths", () => {
+    const table = newShape("t1", { x: 5, y: 5 }, 0, "table");
+    table.cells = [["a", "b"], ["c", "d"]];
+    table.columns = [0.25, 0.75];
+    assert.deepEqual(readDiagram(JSON.parse(JSON.stringify({ shapes: [table] })), "d1").shapes[0], table);
+  });
+
+  test("with ragged rows and cells that are not text is repaired", () => {
+    const table = read({ cells: [["a", 4, null], ["b"], "oops"], columns: [1, 1, 2] });
+    assert.deepEqual(table.cells, [["a", "", ""], ["b", "", ""]]);
+    assert.deepEqual(table.columns, [0.25, 0.25, 0.5]);
+  });
+
+  test("with missing or empty cells is one empty cell, at least", () => {
+    for (const cells of [undefined, [], [[]], "x"]) {
+      const table = read({ cells });
+      assert.deepEqual(table.cells, [[""]]);
+      assert.deepEqual(table.columns, [1]);
+    }
+  });
+
+  test("with column widths that do not fit its columns, or that are not positive, has equal columns", () => {
+    for (const columns of [undefined, [1], [1, 1, 1], [1, 0], [1, -2], [1, "x"], "wide"]) {
+      assert.deepEqual(read({ cells: [["a", "b"]], columns }).columns, [0.5, 0.5]);
+    }
+  });
+
+  test("is the only shape that carries cells", () => {
+    assert.equal("cells" in readDiagram({ shapes: [{ id: "s", x: 0, y: 0, cells: [["a"]], columns: [1] }] }, "d1").shapes[0], false);
+  });
+});

@@ -11,7 +11,7 @@ describe("the creation defaults read from the storage", () => {
     assert.deepEqual(defaults.arrows, { heads: "end", dashed: false, labelSize: 12, route: "straight", width: 2, color: "c-slate" });
     assert.deepEqual(defaults.shapes.rect, rect);
     assert.deepEqual(defaults.shapes.postit, { w: 120, h: 100, fontSize: 14, color: "c-amber" });
-    assert.deepEqual(Object.keys(defaults.shapes), ["rect", "ellipse", "database", "circle", "actor", "postit", "text"]);
+    assert.deepEqual(Object.keys(defaults.shapes), ["rect", "ellipse", "database", "circle", "actor", "postit", "text", "table"]);
   });
 
   test("the values stored are kept", () => {

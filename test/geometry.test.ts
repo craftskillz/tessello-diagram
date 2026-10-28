@@ -287,3 +287,10 @@ describe("a shape within a rectangle", () => {
     assert.equal(boxWithin({ ...box, rotation: 90 }, { x: -20, y: -50, w: 40, h: 100 }), true);
   });
 });
+
+test("a table has the outline of a rectangle: an arrow attaches to its sides and corners", () => {
+  const table = { ...box, type: "table" as const, w: 240, h: 90 };
+  assert.deepEqual(outlinePoint(table, { x: 500, y: 0 }), { x: 120, y: 0 });
+  assert.deepEqual(portPoint(table, "SE"), { x: 120, y: 45 });
+  assert.deepEqual(portsOf(table), portsOf({ type: "rect" }));
+});

@@ -130,3 +130,16 @@ describe("copying a style", () => {
     assert.equal(target.color, "c-blue");
   });
 });
+
+describe("a copied table", () => {
+  test("is pasted with its own cells and column widths, apart from the original", () => {
+    const diagram = newDiagram("d1", "Tables", 0);
+    const table = { ...newShape("t1", { x: 0, y: 0 }, 0, "table"), cells: [["a", "b"], ["c", "d"]], columns: [0.25, 0.75] };
+    diagram.shapes = [table];
+    const [pasted] = pasteItems(diagram, copyItems(diagram, ["t1"]), 20, ids);
+    const copy = diagram.shapes.find((shape) => shape.id === pasted)!;
+    assert.deepEqual([copy.cells, copy.columns], [[["a", "b"], ["c", "d"]], [0.25, 0.75]]);
+    copy.cells![0][0] = "changed";
+    assert.equal(table.cells[0][0], "a");
+  });
+});

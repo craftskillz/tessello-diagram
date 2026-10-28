@@ -6,11 +6,11 @@
 import { endOf, layoutArrows, startOf } from "./arrows.ts";
 import { type Endpoint, isAttached, type Outlined, type Point } from "./geometry.ts";
 
-export const SHAPE_TYPES = ["rect", "ellipse", "database", "circle", "actor", "postit", "text", "image", "custom"] as const;
+export const SHAPE_TYPES = ["rect", "ellipse", "database", "circle", "actor", "postit", "text", "table", "image", "custom"] as const;
 export type ShapeType = (typeof SHAPE_TYPES)[number];
 
 /** The shapes drawn by the tools of the toolbar, in its order. */
-export const BUILT_IN_TYPES = ["rect", "ellipse", "database", "circle", "actor", "postit", "text"] as const satisfies readonly ShapeType[];
+export const BUILT_IN_TYPES = ["rect", "ellipse", "database", "circle", "actor", "postit", "text", "table"] as const satisfies readonly ShapeType[];
 export type BuiltInType = (typeof BUILT_IN_TYPES)[number];
 
 /** The palette of the living-documentation editor, by key: the colors of each key are in base.css, in a light and a dark variant. */
@@ -32,6 +32,8 @@ const CREATION: Record<ShapeType, { w: number; h: number; color: string }> = {
   actor: { w: 36, h: 62.4, color: "c-gray" },
   postit: { w: 120, h: 100, color: "c-amber" },
   text: { w: 120, h: 30, color: "c-gray" },
+  // A table of 3 × 3 cells, each about 80 × 30.
+  table: { w: 240, h: 90, color: "c-gray" },
   image: { w: 160, h: 120, color: "c-gray" },
   custom: { w: 96, h: 96, color: "c-gray" },
 };
@@ -109,6 +111,10 @@ export interface Shape {
   /** A custom shape: its definition, and where its text goes, taken from its definition and changed on the shape itself. */
   customShapeRef?: CustomShapeRef;
   labelPlacement?: LabelPlacement;
+  /** A table: the text of its cells, by row then column; every row has as many cells, and there is at least one. Its rows share its height equally. */
+  cells?: string[][];
+  /** A table: the width of each column, as a part of the width of the table; one per column, they sum to 1. */
+  columns?: number[];
 }
 
 export interface Arrow {
@@ -158,7 +164,9 @@ export interface DiagramEntry {
 /** A new shape centered on a point, with the creation values of its type. */
 export function newShape(id: string, at: Point, z: number, type: ShapeType = "rect"): Shape {
   const { w, h, color } = CREATION[type];
+  const table = type === "table" ? { cells: Array.from({ length: 3 }, () => ["", "", ""]), columns: [1 / 3, 1 / 3, 1 / 3] } : {};
   return {
+    ...table,
     id,
     type,
     x: at.x,
@@ -328,7 +336,23 @@ function readShape(value: unknown): Shape | null {
     link: readLink(value.link),
     ...(shape.type === "image" && isText(value.imageKey) ? { imageKey: value.imageKey } : {}),
     ...(shape.type === "custom" ? readCustom(value) : {}),
+    ...(shape.type === "table" ? readTable(value) : {}),
   };
+}
+
+/**
+ * The cells and column widths of a table. Rows that are not lists are skipped, short ones are padded with empty cells,
+ * and what is not text is an empty cell; a table has one cell at least. Column widths that are not one positive number
+ * per column are replaced by equal ones, and the others are scaled to sum to 1.
+ */
+function readTable(value: StoredFields): Pick<Shape, "cells" | "columns"> {
+  const rows = Array.isArray(value.cells) ? value.cells.filter(Array.isArray) : [];
+  const count = Math.max(1, ...rows.map((row) => row.length));
+  const cells = rows.length ? rows.map((row) => Array.from({ length: count }, (_, col) => textOr(row[col], ""))) : [[""]];
+  const stored = Array.isArray(value.columns) ? value.columns : [];
+  const valid = stored.length === count && stored.every((width) => isNumber(width) && width > 0);
+  const total = valid ? stored.reduce((sum: number, width: number) => sum + width, 0) : 0;
+  return { cells, columns: valid ? stored.map((width: number) => width / total) : Array.from({ length: count }, () => 1 / count) };
 }
 
 /** The definition of a custom shape and where its text goes; one without a definition is drawn as a deleted one. */

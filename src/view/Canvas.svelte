@@ -8,12 +8,13 @@
   import { applyStyle, copyItems, copyStyle, pasteItems } from "../lib/clipboard.ts";
   import { createArrow, createShape } from "../lib/defaults.ts";
   import { type Arrow, type Diagram, keepsRatio, type ShapeLink, newId, nextZ, removeShape, type Shape, withGroups } from "../lib/diagram.ts";
-  import { type Box, boxWithin, CONNECTION_DIRECTIONS, type ConnectionDirection, connectionHandlePoint, connectionPort, contains, type Corner, cornersOf, cornerSign, degrees, type Endpoint, isAttached, type Point, portPoint, portsOf, resizeBox, shapeAt } from "../lib/geometry.ts";
+  import { type Box, boxWithin, CONNECTION_DIRECTIONS, type ConnectionDirection, connectionHandlePoint, connectionPort, contains, type Corner, cornersOf, cornerSign, degrees, type Endpoint, isAttached, type Point, portPoint, portsOf, resizeBox, rotate, shapeAt } from "../lib/geometry.ts";
   import { t, titleOf } from "../lib/i18n.ts";
   import { alignment, type Bounds, boundsOf, fitView, GRID, type Guide, pointsBounds, scaleBoxes, snapToGrid } from "../lib/placement.ts";
   import { captionOf } from "../lib/images.ts";
   import { outlineOf, paletteOf, pictureKeyOf, placeCustomShape } from "../lib/library.ts";
   import { creation, diagrams, followLink, goBack, images, insertImage, redo, requestImages, save, shapeLibraries, type Tool, ui, undo } from "../lib/store.svelte.ts";
+  import { cellAt, cellBox, columnEdges, dragSeparator, resizeCorner, resizeSide, tableOf } from "../lib/table.ts";
   import { canvasMeasure, LABEL_PAD, layoutLabel, LINE_HEIGHT } from "../lib/text.ts";
   import ArrowPanel from "./ArrowPanel.svelte";
   import ArrowView from "./ArrowView.svelte";
@@ -33,6 +34,7 @@
   /** The narrowest a label can be made by its handle. */
   const LABEL_MIN = 20;
   const CORNERS: Corner[] = ["nw", "ne", "se", "sw"];
+  const SIDES = ["n", "e", "s", "w"] as const;
   /** How far each paste lands from the last, in units of the drawing. */
   const PASTE_OFFSET = 40;
   /** The zooms the canvas allows, the step of its buttons, and the margin around the drawing when the view fits it, on screen. */
@@ -55,6 +57,8 @@
 
   /** Where a free arrow was when a move started: its ends and its waypoints. */
   type Line = { id: string; from: Point; to: Point; waypoints: Point[] };
+  /** What of a table is dragged: a side, a corner, or the separator after a column. */
+  type TablePart = { side: "n" | "e" | "s" | "w" } | { corner: Corner } | { column: number };
   type Gesture =
     | { kind: "pan"; from: Point; pan: Point }
     | { kind: "move"; id: string; from: Point; starts: (Box & { id: string })[]; lines: Line[]; moved: boolean }
@@ -66,6 +70,7 @@
     | { kind: "labelWidth"; id: string; moved: boolean }
     | { kind: "marquee"; from: Point; to: Point; kept: string[] }
     | { kind: "resize"; id: string; corner: Corner; from: Point; start: Box; moved: boolean }
+    | { kind: "resizeTable"; id: string; part: TablePart; from: Point; start: Shape; moved: boolean }
     | { kind: "resizeGroup"; corner: Corner; from: Point; bounds: Bounds; starts: (Box & { id: string })[]; moved: boolean }
     | { kind: "rotate"; id: string; text: boolean; moved: boolean };
   let gesture = $state<Gesture | null>(null);
@@ -74,8 +79,8 @@
   /** Where the pointer is on the drawing, to show the ports it can reach. */
   let pointer = $state<Point | null>(null);
 
-  /** The shape whose text, or the arrow whose label, is being edited, and the text typed so far. */
-  let editing = $state<{ kind: "shape" | "label"; id: string; text: string } | null>(null);
+  /** What is edited: the text of a shape, or of one cell of a table, or the label of an arrow. */
+  let editing = $state<{ kind: "shape" | "label"; id: string; text: string; cell?: { row: number; col: number } } | null>(null);
 
   const shapes = $derived(new Map(diagram.shapes.map((shape) => [shape.id, shape])));
   /** The shapes as the geometry sees them: a custom shape with the anchors of its definition. Only read, never changed. */
@@ -402,6 +407,19 @@
       const { x, y, w, h } = resizeBox(gesture.start, gesture.corner, delta, { keepRatio, fromCenter: ui.resizeFromCenter });
       Object.assign(shape, { x, y, w, h });
       gesture.moved = true;
+    } else if (gesture.kind === "resizeTable") {
+      const shape = shapes.get(gesture.id);
+      if (!shape) return;
+      const { part, start } = gesture;
+      const delta = { x: at.x - gesture.from.x, y: at.y - gesture.from.y };
+      const options = { fromCenter: ui.resizeFromCenter };
+      // Every change is computed from the table as it was at the press, so the drag can come back to where it began.
+      const change =
+        "side" in part ? resizeSide(start, part.side, delta, options)
+        : "corner" in part ? resizeCorner(start, part.corner, delta, options)
+        : dragSeparator(start, part.column, rotate(delta, -start.rotation).x);
+      Object.assign(shape, change);
+      gesture.moved = true;
     } else if (gesture.kind === "resizeGroup") {
       // The bounds of the group resize as a shape would; each member keeps its place and its size within them.
       const { bounds } = gesture;
@@ -533,7 +551,13 @@
   function startResize(event: PointerEvent, shape: Shape, corner: Corner) {
     if (event.button !== 0) return;
     const { x, y, w, h, rotation } = shape;
+    if (shape.type === "table") return startResizeTable(event, shape, { corner });
     capture(event, { kind: "resize", id: shape.id, corner, from: toDrawing(event), start: { x, y, w, h, rotation }, moved: false });
+  }
+
+  function startResizeTable(event: PointerEvent, shape: Shape, part: TablePart) {
+    if (event.button !== 0) return;
+    capture(event, { kind: "resizeTable", id: shape.id, part, from: toDrawing(event), start: structuredClone($state.snapshot(shape)), moved: false });
   }
 
   function startResizeGroup(event: PointerEvent, bounds: Bounds, corner: Corner) {
@@ -555,7 +579,7 @@
     const arrow = labelAt(at) ?? arrowAt(diagram.arrows, paths, at, reach(HIT));
     if (arrow) return arrow.locked || startEditingLabel(arrow.id);
     const shape = shapeAt(diagram.shapes, at);
-    if (shape) return shape.locked || startEditing(shape.id);
+    if (shape) return shape.locked || startEditing(shape.id, shape.type === "table" ? cellAt(shape, at) : undefined);
     if (ui.tool === "select" || ui.tool === "arrow") return;
     // The Image tool asks for a picture, placed where the double-click was.
     if (ui.tool === "image") {
@@ -709,8 +733,13 @@
   }
 
   // ── Text of a shape or label of an arrow: Enter applies, Shift+Enter adds a line, Escape abandons, leaving the field applies ──
-  function startEditing(id: string) {
-    editing = { kind: "shape", id, text: shapes.get(id)?.text ?? "" };
+  // The text of a table is that of a cell: the one given, or its first by default, as for the panel's "Edit text".
+  function startEditing(id: string, cell?: { row: number; col: number }) {
+    const shape = shapes.get(id);
+    if (shape?.type === "table") {
+      const at = cell ?? { row: 0, col: 0 };
+      editing = { kind: "shape", id, text: tableOf(shape).cells[at.row]?.[at.col] ?? "", cell: at };
+    } else editing = { kind: "shape", id, text: shape?.text ?? "" };
   }
 
   function startEditingLabel(id: string) {
@@ -722,12 +751,20 @@
 
   function applyText() {
     if (!editing) return;
-    const { kind, id, text } = editing;
+    const { kind, id, text, cell } = editing;
     editing = null;
     if (kind === "shape") {
       const shape = shapes.get(id);
-      if (!shape || shape.text === text) return;
-      shape.text = text;
+      if (!shape) return;
+      if (cell) {
+        const rows = tableOf(shape).cells;
+        if (rows[cell.row]?.[cell.col] === undefined || rows[cell.row][cell.col] === text) return;
+        // The row is replaced, not changed in place, so that what shows the cells reads them again.
+        shape.cells = rows.map((line, row) => (row === cell.row ? line.map((value, col) => (col === cell.col ? text : value)) : line));
+      } else {
+        if (shape.text === text) return;
+        shape.text = text;
+      }
     } else {
       const arrow = arrows.get(id);
       if (!arrow || arrow.label === text) return;
@@ -736,8 +773,23 @@
     void save();
   }
 
+  // Tab applies a cell and edits the next one, in reading order; Shift+Tab the previous one. Past the last cell, Tab only applies.
+  function moveToCell(event: KeyboardEvent) {
+    const shape = editedShape;
+    const cell = editing?.cell;
+    if (!shape || !cell) return;
+    event.preventDefault();
+    const { cells } = tableOf(shape);
+    const index = cell.row * cells[0].length + cell.col + (event.shiftKey ? -1 : 1);
+    const count = cells.length * cells[0].length;
+    applyText();
+    if (index < 0 || index >= count) return;
+    startEditing(shape.id, { row: Math.floor(index / cells[0].length), col: index % cells[0].length });
+  }
+
   function onTextKey(event: KeyboardEvent) {
-    if (event.key === "Enter" && !event.shiftKey) {
+    if (event.key === "Tab" && editing?.cell) moveToCell(event);
+    else if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       applyText();
     } else if (event.key === "Escape") {
@@ -763,7 +815,8 @@
     const shape = shapes.get(id);
     if (!shape) return "";
     const type = t(`type_${shape.type}`);
-    const text = shape.text.trim();
+    // A table has no text of its own: its first filled cell names it.
+    const text = (shape.type === "table" ? (tableOf(shape).cells.flat().find((cell) => cell.trim()) ?? "") : shape.text).trim();
     return text ? t("shape_named", { type, text }) : type;
   };
   const endName = (end: Endpoint) => {
@@ -819,6 +872,7 @@
             label={nameOf(item.shape.id)}
             selected={ui.selection.includes(item.shape.id)}
             editing={editing?.kind === "shape" && editing.id === item.shape.id}
+            editingCell={editing?.kind === "shape" && editing.id === item.shape.id ? editing.cell : undefined}
             image={key ? images[key] : undefined}
             deleted={item.shape.type === "custom" && !key}
             linkTitle={linkTitle(item.shape.link)}
@@ -1030,6 +1084,36 @@
               onpointerdown={(event) => startResize(event, shape, corner)}
             />
           {/each}
+          {#if shape.type === "table"}
+            {#each SIDES as side (side)}
+              {@const horizontal = side === "n" || side === "s"}
+              <rect
+                role="button"
+                tabindex="-1"
+                aria-label={t(`resize_side_${side}`)}
+                class="dg-handle resize-side-{horizontal ? 'ns' : 'ew'}"
+                x={(side === "e" ? shape.w / 2 : side === "w" ? -shape.w / 2 : 0) - size}
+                y={(side === "s" ? shape.h / 2 : side === "n" ? -shape.h / 2 : 0) - size}
+                width={size * 2}
+                height={size * 2}
+                stroke-width={1.5 / zoom}
+                onpointerdown={(event) => startResizeTable(event, shape, { side })}
+              />
+            {/each}
+            {#each columnEdges(shape).slice(1, -1) as edge, index (index)}
+              <rect
+                role="button"
+                tabindex="-1"
+                aria-label={t("resize_column", { n: index + 1 })}
+                class="dg-separator"
+                x={edge - 3 / zoom}
+                y={-shape.h / 2}
+                width={6 / zoom}
+                height={shape.h}
+                onpointerdown={(event) => startResizeTable(event, shape, { column: index })}
+              />
+            {/each}
+          {/if}
           <circle
             role="button"
             tabindex="-1"
@@ -1057,13 +1141,15 @@
   </svg>
 
   {#if editing && editedShape}
+    <!-- A table's editor covers its cell, placed from the center of the table, whose rotation it ignores as for a shape. -->
+    {@const box = editing.cell ? cellBox(editedShape, editing.cell.row, editing.cell.col) : { x: 0, y: 0, w: editedShape.w, h: editedShape.h }}
     <textarea
       class="dg-text-editor"
-      aria-label={t("text_label")}
-      style:left="{pan.x + (editedShape.x - editedShape.w / 2) * zoom}px"
-      style:top="{pan.y + (editedShape.y - editedShape.h / 2) * zoom}px"
-      style:width="{editedShape.w * zoom}px"
-      style:height="{editedShape.h * zoom}px"
+      aria-label={editing.cell ? t("cell_label", { row: editing.cell.row + 1, col: editing.cell.col + 1 }) : t("text_label")}
+      style:left="{pan.x + (editedShape.x + box.x - box.w / 2) * zoom}px"
+      style:top="{pan.y + (editedShape.y + box.y - box.h / 2) * zoom}px"
+      style:width="{box.w * zoom}px"
+      style:height="{box.h * zoom}px"
       style:font-size="{editedShape.fontSize * zoom}px"
       style:text-align={editedShape.textAlign}
       bind:value={editing.text}
@@ -1133,7 +1219,7 @@
 {:else if selectedArrows.length && !selectedShapes.length}
   <ArrowPanel arrows={selectedArrows} onEditLabel={startEditingLabel} onLock={() => setLocked(true)} onCopyStyle={copySelectionStyle} onPasteStyle={pasteSelectionStyle} />
 {:else}
-  <ShapePanel shapes={selectedShapes} onEditText={startEditing} onLock={() => setLocked(true)} onCopyStyle={copySelectionStyle} onPasteStyle={pasteSelectionStyle} />
+  <ShapePanel shapes={selectedShapes} onEditText={(id) => startEditing(id)} onLock={() => setLocked(true)} onCopyStyle={copySelectionStyle} onPasteStyle={pasteSelectionStyle} />
 {/if}
 
 <style>
@@ -1227,6 +1313,17 @@
   .resize-nw,
   .resize-se {
     cursor: nwse-resize;
+  }
+  .resize-side-ns {
+    cursor: ns-resize;
+  }
+  .resize-side-ew {
+    cursor: ew-resize;
+  }
+  /* The hit zone of a column separator: invisible, but it takes the pointer along the whole height. */
+  .dg-separator {
+    fill: transparent;
+    cursor: col-resize;
   }
   .resize-ne,
   .resize-sw {

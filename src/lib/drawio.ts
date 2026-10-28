@@ -8,6 +8,7 @@ import type { Arrow, Diagram, LabelPlacement, Shape } from "./diagram.ts";
 import { degrees, type Endpoint, isAttached, lidOf, type Outlined, type Point, portPoint, portsOf } from "./geometry.ts";
 import { outlineOf, pictureKeyOf, type ShapeLibrary } from "./library.ts";
 import { boundsOf } from "./placement.ts";
+import { columnEdges, tableOf } from "./table.ts";
 
 /** The colors of each key of the palette, in its light variant (base.css): fill, outline and text. */
 const PALETTE: Record<string, { fill: string; stroke: string; text: string }> = {
@@ -98,6 +99,9 @@ function outlineStyle(shape: Shape, picture: Picture): { parts: string[]; body: 
       return { parts: ["shape=umlActor", "verticalLabelPosition=bottom", "verticalAlign=top"], body: true, inside: false };
     case "postit":
       return { parts: ["shape=note", `size=${num(Math.min(shape.w, shape.h) * 0.18)}`], body: true, inside: true };
+    // A table is a container of rows, which draw.io lays out; its text is that of its cells, not its own.
+    case "table":
+      return { parts: ["shape=table", "startSize=0", "container=1", "collapsible=0", "childLayout=tableLayout"], body: true, inside: false };
     case "text":
       return { parts: ["text", "strokeColor=none", "fillColor=none"], body: false, inside: true };
     default:
@@ -109,7 +113,51 @@ function outlineStyle(shape: Shape, picture: Picture): { parts: string[]; body: 
 type Parent = { id: string; x: number; y: number };
 const ROOT: Parent = { id: LAYER, x: 0, y: 0 };
 
-/** The cell of a shape: its style and its box, from its top-left corner, within its parent. */
+/** The style of a row of a table: a band as wide as the table, without a frame of its own, which the table draws. */
+const ROW_STYLE = [
+  "shape=tableRow",
+  "horizontal=0",
+  "startSize=0",
+  "swimlaneHead=0",
+  "swimlaneBody=0",
+  "strokeColor=inherit",
+  "top=0",
+  "left=0",
+  "bottom=0",
+  "right=0",
+  "collapsible=0",
+  "dropTarget=0",
+  "fillColor=none",
+  "points=[[0,0.5],[1,0.5]]",
+  "portConstraint=eastwest",
+];
+
+/** The style of a cell of a table: its text only, in the colors and the alignment of the table. */
+const CELL_STYLE = ["shape=partialRectangle", "html=1", "whiteSpace=wrap", "connectable=0", "strokeColor=inherit", "overflow=hidden", "fillColor=none", "top=0", "left=0", "bottom=0", "right=0", "pointerEvents=1"];
+
+/**
+ * The rows of a table, then their cells, as the children draw.io nests in it: a row from the top of the table, a cell from
+ * its left, each as high as its row and as wide as its column. They are not rotated, the table is.
+ */
+function tableChildren(shape: Shape, colors: { text: string }): string {
+  const { cells } = tableOf(shape);
+  const edges = columnEdges(shape).map((edge) => edge + shape.w / 2);
+  const h = shape.h / cells.length;
+  const vertex = (id: string, value: string, style: string[], parent: string, geometry: string) =>
+    `<mxCell id="${attribute(id)}" value="${attribute(value)}" style="${attribute(styleOf(style))}" vertex="1" parent="${attribute(parent)}"><mxGeometry ${geometry} as="geometry"/></mxCell>`;
+  const cellStyle = [...CELL_STYLE, `fontSize=${shape.fontSize}`, `fontColor=${colors.text}`, `align=${shape.textAlign}`, `verticalAlign=${shape.textValign}`];
+  return cells
+    .map((row, r) => {
+      const rowId = `${shape.id}-r${r}`;
+      return (
+        vertex(rowId, "", ROW_STYLE, shape.id, `y="${num(r * h)}" width="${num(shape.w)}" height="${num(h)}"`) +
+        row.map((text, c) => vertex(`${rowId}-c${c}`, html(text), cellStyle, rowId, `x="${num(edges[c])}" width="${num(edges[c + 1] - edges[c])}" height="${num(h)}"`)).join("")
+      );
+    })
+    .join("");
+}
+
+/** The cell of a shape: its style and its box, from its top-left corner, within its parent. A table is followed by its rows and cells. */
 function shapeCell(shape: Shape, parent: Parent, pictureOf: (shape: Shape) => Picture): string {
   const colors = PALETTE[shape.color] ?? PALETTE["c-gray"];
   const picture = pictureOf(shape);
@@ -127,8 +175,9 @@ function shapeCell(shape: Shape, parent: Parent, pictureOf: (shape: Shape) => Pi
   const { w, h } = sizeOf(shape);
   const geometry = `<mxGeometry x="${num(shape.x - w / 2 - parent.x)}" y="${num(shape.y - h / 2 - parent.y)}" width="${num(w)}" height="${num(h)}" as="geometry"/>`;
   // A custom shape whose definition is deleted shows its name, unless it has a text.
-  const text = shape.type === "custom" && !picture ? shape.text || (shape.customShapeRef?.name ?? "") : shape.text;
-  return `<mxCell id="${attribute(shape.id)}" value="${attribute(html(text))}" style="${attribute(styleOf(parts))}" vertex="1" parent="${attribute(parent.id)}">${geometry}</mxCell>`;
+  const text = shape.type === "custom" && !picture ? shape.text || (shape.customShapeRef?.name ?? "") : shape.type === "table" ? "" : shape.text;
+  const cell = `<mxCell id="${attribute(shape.id)}" value="${attribute(html(text))}" style="${attribute(styleOf(parts))}" vertex="1" parent="${attribute(parent.id)}">${geometry}</mxCell>`;
+  return shape.type === "table" ? cell + tableChildren(shape, colors) : cell;
 }
 
 /**

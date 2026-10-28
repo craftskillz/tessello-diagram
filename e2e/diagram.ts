@@ -106,6 +106,8 @@ type StoredShape = {
   id: string;
   type: string;
   text: string;
+  cells?: string[][];
+  columns?: number[];
   x: number;
   y: number;
   w: number;
@@ -190,7 +192,7 @@ export async function at(page: Page, x: number, y: number) {
   }, { x, y });
 }
 
-type ToolName = "Select (S)" | "Rectangle (R)" | "Ellipse (E)" | "Database (D)" | "Circle (C)" | "Actor (A)" | "Post-it (P)" | "Free text (T)" | "Arrow (F)";
+type ToolName = "Select (S)" | "Rectangle (R)" | "Ellipse (E)" | "Database (D)" | "Circle (C)" | "Actor (A)" | "Post-it (P)" | "Free text (T)" | "Table" | "Arrow (F)";
 
 export async function tool(page: Page, name: ToolName) {
   await page.getByRole("button", { name }).click();

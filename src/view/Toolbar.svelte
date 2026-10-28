@@ -16,6 +16,7 @@
     { tool: "actor", label: () => t("tool_actor"), icon: "M9 5a3 3 0 1 0 6 0a3 3 0 1 0-6 0M12 8v7M6 11h12M12 15l-4 6M12 15l4 6" },
     { tool: "postit", label: () => t("tool_postit"), icon: "M4 4h11l5 5v11H4zM15 4v5h5" },
     { tool: "text", label: () => t("tool_text"), icon: "M5 6h14M12 6v13M9 19h6" },
+    { tool: "table", label: () => t("tool_table"), icon: "M4 5h16v14H4zM4 11h16M4 15h16M10 5v14M15 5v14" },
     { tool: "arrow", label: () => t("tool_arrow"), icon: "M4 20L19 5M11 5h8v8" },
     { tool: "image", label: () => t("tool_image"), icon: "M4 5h16v14H4zM4 16l5-5 4 4 2-2 5 5M15 9.5a1.5 1.5 0 1 0 0.01 0" },
   ];

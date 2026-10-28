@@ -41,6 +41,7 @@ Pick a tool at the top, or press its key:
 
 - **Select (S)**: click a shape or an arrow to select it, drag a shape to move it. **Ctrl+click** (**Cmd+click** on a Mac) adds a shape or an arrow to the selection or takes it out, **Ctrl+A** selects everything, and a drag on an empty spot selects what it surrounds entirely. **Delete** removes the selection: the arrows attached to a removed shape stay where they were, their ends left free. **Ctrl+Delete** (**Cmd+Delete**) also removes the arrows of the shape. **Escape** returns to this tool.
 - **Rectangle (R)**, **Ellipse (E)**, **Database (D)**, **Circle (C)**, **Actor (A)**, **Post-it (P)** and **Free text (T)**: double-click an empty spot to place the shape and type its text. **Enter** applies the text, **Shift+Enter** adds a line, **Escape** abandons it. The text wraps within the width of the shape. Double-click a shape, or click **Edit text**, to change its text.
+- **Table**: double-click an empty spot to place a table of 3 rows and 3 columns and type in its first cell. See "Tables" below.
 - **Arrow (F)**: press anywhere, drag and release. See below.
 - **Image (I)**: double-click an empty spot and choose a picture. See below.
 
@@ -97,6 +98,16 @@ Drag the round handle above the shape to turn it (**Shift** turns by steps of 15
 The panel on the right styles every selected shape: its color, the opacity of its background, the size and alignment of its text, and whether it is in front of or behind the others.
 
 Select a shape and click **Copy style** (**Ctrl+Alt+C**, **Cmd+Option+C** on a Mac) to copy its color, the opacity of its background, and the size and alignment of its text; tick **with size** to copy its width and height too. Then select other shapes and click **Paste style** (**Ctrl+Alt+V**, **Cmd+Option+V**). An arrow's style is copied the same way, onto other arrows: its arrowheads, its line, its width, its color, the size of its label and its route.
+
+### Tables
+
+Pick **Table** and double-click an empty spot: the table has 3 rows and 3 columns, and its first cell is open for typing. Double-click any cell to write in it; **Tab** applies the text and moves to the next cell, **Shift+Tab** to the previous one, **Enter** applies and **Escape** abandons. Text wraps within its column. The panel has **Rows** and **Columns** to change the size of the grid.
+
+A selected table has more handles than other shapes:
+
+- The **side handles**, in the middle of each side, change the width or the height of the table. The text keeps its size, and the columns keep their proportions.
+- The **corner handles** resize the whole table, text size included, keeping its proportions.
+- A **column separator**, dragged between two columns, changes only the column on its left: the table widens or narrows by the same amount, and its left side stays in place.
 
 ### Default styles
 

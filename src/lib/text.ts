@@ -2,6 +2,7 @@
 // are placed by its alignments. SVG does not wrap text, so the width of a line is measured in the font of the View.
 
 import type { Shape } from "./diagram.ts";
+import { cellBox, tableOf } from "./table.ts";
 
 /** The space between the text and the box of its shape. */
 const PAD = 8;
@@ -61,6 +62,16 @@ export function layoutText(shape: Shape, measure: Measure): TextLayout {
   if (shape.textAlign === "left") return { lines, x: -shape.w / 2 + PAD, y, anchor: "start", lineHeight };
   if (shape.textAlign === "right") return { lines, x: shape.w / 2 - PAD, y, anchor: "end", lineHeight };
   return { lines, x: 0, y, anchor: "middle", lineHeight };
+}
+
+/**
+ * The lines of the text of a cell of a table and where they go, in the frame of the table: they wrap within the width
+ * of the cell, as the text of a rectangle the size of the cell does, and are placed from its center.
+ */
+export function layoutCell(shape: Shape, row: number, col: number, measure: Measure): TextLayout {
+  const { x, y, w, h } = cellBox(shape, row, col);
+  const layout = layoutText({ ...shape, type: "rect", text: tableOf(shape).cells[row]?.[col] ?? "", w, h }, measure);
+  return { ...layout, x: layout.x + x, y: layout.y + y };
 }
 
 /** The space between the label of an arrow and the edge of its background. */

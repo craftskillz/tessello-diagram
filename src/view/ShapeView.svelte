@@ -8,13 +8,15 @@
   import type { Shape } from "../lib/diagram.ts";
   import { lidOf } from "../lib/geometry.ts";
   import { t } from "../lib/i18n.ts";
-  import { layoutText, type Measure } from "../lib/text.ts";
+  import { columnEdges, tableOf } from "../lib/table.ts";
+  import { layoutCell, layoutText, type Measure } from "../lib/text.ts";
 
   let {
     shape,
     label,
     selected,
     editing,
+    editingCell,
     image,
     deleted = false,
     linkTitle,
@@ -24,6 +26,8 @@
     label: string;
     selected: boolean;
     editing: boolean;
+    /** The cell of a table whose text is edited: only that one is hidden. */
+    editingCell?: { row: number; col: number };
     /** The picture of an image as a data URL, null when it is missing, undefined while it is read. */
     image?: string | null;
     /** A custom shape whose definition is deleted. */
@@ -36,6 +40,18 @@
   const w = $derived(shape.w);
   const h = $derived(shape.h);
   const text = $derived(layoutText(shape, measure));
+  // A table draws the text of each cell, wrapped in its column, and the lines between its cells.
+  const grid = $derived.by(() => {
+    if (shape.type !== "table") return undefined;
+    const { cells } = tableOf(shape);
+    return {
+      columns: columnEdges(shape).slice(1, -1),
+      rows: Array.from({ length: cells.length - 1 }, (_, row) => -h / 2 + ((row + 1) * h) / cells.length),
+      cells: cells.flatMap((line, row) =>
+        line.map((value, col) => ({ row, col, value, layout: value ? layoutCell(shape, row, col, measure) : undefined })),
+      ),
+    };
+  });
   const lid = $derived(lidOf(h));
   const fold = $derived(Math.min(w, h) * 0.18);
   // The actor is drawn in a 30 × 52 box, scaled to the shape.
@@ -79,6 +95,14 @@
     />
   {:else if shape.type === "text"}
     <rect class="dg-frame" x={-w / 2} y={-h / 2} width={w} height={h} rx="3" />
+  {:else if grid}
+    <rect class="dg-body" x={-w / 2} y={-h / 2} width={w} height={h} fill-opacity={shape.opacity} />
+    {#each grid.columns as x}
+      <line class="dg-grid-line" x1={x} y1={-h / 2} x2={x} y2={h / 2} />
+    {/each}
+    {#each grid.rows as y}
+      <line class="dg-grid-line" x1={-w / 2} y1={y} x2={w / 2} y2={y} />
+    {/each}
   {:else if shape.type === "image"}
     {#if image}
       <image href={image} x={-w / 2} y={-h / 2} width={w} height={h} preserveAspectRatio="none" opacity={shape.opacity} />
@@ -104,7 +128,17 @@
       <path d="M-3.5 1.5l-1 1a2.1 2.1 0 0 0 3 3l1.5-1.5M3.5-1.5l1-1a2.1 2.1 0 0 0-3-3L0-4M-2 2l4-4" />
     </g>
   {/if}
-  {#if !editing && shape.text}
+  {#if grid}
+    {#each grid.cells as { row, col, layout } (`${row}/${col}`)}
+      {#if layout && !(editingCell?.row === row && editingCell?.col === col)}
+        <text font-size={shape.fontSize} text-anchor={layout.anchor} dominant-baseline="central" transform="rotate({shape.textRotation})">
+          {#each layout.lines as line, index}
+            <tspan x={layout.x} y={layout.y + index * layout.lineHeight}>{line}</tspan>
+          {/each}
+        </text>
+      {/if}
+    {/each}
+  {:else if !editing && shape.text}
     <text font-size={shape.fontSize} text-anchor={text.anchor} dominant-baseline="central" transform="rotate({shape.textRotation})">
       {#each text.lines as line, index}
         <tspan x={text.x} y={text.y + index * text.lineHeight}>{line}</tspan>
@@ -118,6 +152,10 @@
     fill: var(--fill);
     stroke: var(--stroke);
     stroke-width: 1.5;
+  }
+  .dg-grid-line {
+    stroke: var(--stroke);
+    stroke-width: 1;
   }
   .dg-fold {
     fill: var(--stroke);
