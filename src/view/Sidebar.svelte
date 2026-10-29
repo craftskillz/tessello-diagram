@@ -40,11 +40,12 @@
   {:else}
     <ul>
       {#each diagrams.list as entry (entry.id)}
+        {@const title = titleOf(entry.title)}
         <li class:active={entry.id === diagrams.open?.id}>
-          <button type="button" class="dg-open" aria-current={entry.id === diagrams.open?.id ? "page" : undefined} onclick={() => openFromList(entry.id)}>
-            {titleOf(entry.title)}
+          <button type="button" class="dg-open" {title} aria-current={entry.id === diagrams.open?.id ? "page" : undefined} onclick={() => openFromList(entry.id)}>
+            {title}
           </button>
-          <button type="button" class="dg-delete" aria-label={t("delete_diagram", { title: titleOf(entry.title) })} title={t("delete")} onclick={() => confirmRemove(entry)}>
+          <button type="button" class="dg-delete" aria-label={t("delete_diagram", { title })} title={t("delete")} onclick={() => confirmRemove(entry)}>
             ×
           </button>
         </li>

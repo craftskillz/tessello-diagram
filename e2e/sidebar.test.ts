@@ -106,3 +106,33 @@ test("lays the header on two lines, the title with the toggle on its right, then
     await page.context().close();
   }
 });
+
+test("shows the full title of a diagram in a tooltip, without repeating it to a screen reader", async () => {
+  const long = "A very long title for a diagram, much longer than the list can show on one line";
+  const host = diagramHost();
+  const entries = [
+    { id: "long", title: long, updatedAt: 2 },
+    { id: "blank", title: "", updatedAt: 1 },
+  ];
+  for (const entry of entries) await host.storage.set(`diagram:${entry.id}`, newDiagram(entry.id, entry.title, entry.updatedAt) as never);
+  await host.storage.set("diagrams", entries);
+  const { page } = await openView({ host, params: { id: "long" } });
+  const longTitle = sidebar(page).getByRole("button", { name: long, exact: true });
+  const untitled = sidebar(page).getByRole("button", { name: "Untitled", exact: true });
+
+  assert.equal(await longTitle.getAttribute("aria-current"), "page");
+  assert.equal(await longTitle.getAttribute("title"), long);
+  assert.ok(await longTitle.evaluate((element) => element.scrollWidth > element.clientWidth), "the long title is cut in the list");
+  assert.equal(await untitled.getAttribute("title"), "Untitled");
+
+  // Chromium gives a title equal to the name no description, so the screen reader hears the title once.
+  const cdp = await page.context().newCDPSession(page);
+  type Value = { value: string } | undefined;
+  const { nodes } = (await cdp.send("Accessibility.getFullAXTree")) as { nodes: { role: Value; name: Value; description: Value }[] };
+  for (const name of [long, "Untitled"]) {
+    const node = nodes.find((each) => each.role?.value === "button" && each.name?.value === name);
+    assert.ok(node, `the button named “${name}” is exposed`);
+    assert.ok(!node.description?.value, `the button named “${name}” has no description repeating its name`);
+  }
+  await page.context().close();
+});

@@ -27,7 +27,7 @@ Every change is saved the moment you finish it. There is no Save button.
 
 ## Your diagrams
 
-The list on the left holds your diagrams. Click **+ New** to create one: it opens at once, titled **New diagram**. Click a title to open that diagram. Rename the open diagram in the title field at the top; an empty title becomes **Untitled**.
+The list on the left holds your diagrams. Click **+ New** to create one: it opens at once, titled **New diagram**. Click a title to open that diagram; point at a long title that is cut short to see it in full. Rename the open diagram in the title field at the top; an empty title becomes **Untitled**.
 
 The burger button next to **Diagrams** hides the list to give the canvas more room. The same button in the top bar shows it again.
 
