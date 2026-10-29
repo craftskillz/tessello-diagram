@@ -117,6 +117,8 @@ export interface Shape {
   columns?: number[];
   /** A table: the height of each row, as a part of the height of the table; one per row, they sum to 1. */
   rows?: number[];
+  /** A rectangle: the radius of its corners, in units of the drawing, as asked; drawn within half its smallest side (geometry.ts). */
+  cornerRadius?: number;
   /** The text style of the shape, on its whole text; absent is off. For a table, the style of the cells that have none of their own. */
   bold?: boolean;
   italic?: boolean;
@@ -180,12 +182,16 @@ export interface DiagramEntry {
   updatedAt: number;
 }
 
+/** The radius of the corners of a rectangle, in units of the drawing: that of a new one, and of a stored one that has none. */
+export const CORNER_RADIUS = 6;
+
 /** A new shape centered on a point, with the creation values of its type. */
 export function newShape(id: string, at: Point, z: number, type: ShapeType = "rect"): Shape {
   const { w, h, color } = CREATION[type];
   const table = type === "table" ? { cells: Array.from({ length: 3 }, () => ["", "", ""]), columns: [1 / 3, 1 / 3, 1 / 3], rows: [1 / 3, 1 / 3, 1 / 3], cellStyles: Array.from({ length: 3 }, () => [{}, {}, {}]) } : {};
   return {
     ...table,
+    ...(type === "rect" ? { cornerRadius: CORNER_RADIUS } : {}),
     id,
     type,
     x: at.x,
@@ -356,6 +362,7 @@ function readShape(value: unknown): Shape | null {
     ...(value.bold === true ? { bold: true } : {}),
     ...(value.italic === true ? { italic: true } : {}),
     ...(value.underline === true ? { underline: true } : {}),
+    ...(shape.type === "rect" ? { cornerRadius: isNumber(value.cornerRadius) && value.cornerRadius >= 0 ? value.cornerRadius : CORNER_RADIUS } : {}),
     ...(shape.type === "image" && isText(value.imageKey) ? { imageKey: value.imageKey } : {}),
     ...(shape.type === "custom" ? readCustom(value) : {}),
     ...(shape.type === "table" ? readTable(value) : {}),

@@ -42,6 +42,20 @@ describe("converting a diagram to draw.io", () => {
     assert.equal(style.fontSize, "18");
   });
 
+  test("the corner radius of a rectangle is its arc size, twice the radius within half its smallest side", () => {
+    const styleOf = (cornerRadius: number) => {
+      const diagram = newDiagram("d1", "Checkout", 0);
+      diagram.shapes = [{ ...newShape("api", { x: 100, y: 50 }, 0), cornerRadius }];
+      return parseStyle(cellOf(convert(diagram).xml, "api").attributes.style);
+    };
+    for (const [radius, arc] of [[6, "12"], [10.5, "21"], [999, "60"]] as const) {
+      const style = styleOf(radius);
+      assert.deepEqual([style.rounded, style.absoluteArcSize, style.arcSize], ["1", "1", arc]);
+    }
+    const square = styleOf(0);
+    assert.deepEqual([square.rounded, square.absoluteArcSize, square.arcSize], ["0", undefined, undefined]);
+  });
+
   test("each key of the palette takes the colors of its light variant in base.css", () => {
     const css = readFileSync(new URL("../src/lib/base.css", import.meta.url), "utf8");
     const diagram = newDiagram("d1", "Palette", 0);

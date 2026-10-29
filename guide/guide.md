@@ -97,9 +97,9 @@ Drag a corner of the selected shape to resize it. Hold **Shift** to keep its pro
 
 Drag the round handle above the shape to turn it (**Shift** turns by steps of 15°), or use the rotation buttons of the panel, by 10°. The handle marked **T** turns the text alone; a table has none, as its text always turns with it.
 
-The panel on the right styles every selected shape: its color, the opacity of its background, the size and alignment of its text, its **Bold**, **Italic** and **Underline** (each applies to the whole text, and they combine), and whether it is in front of or behind the others. It slides in from the right as soon as something is selected, and slides out when nothing is, leaving its room to the canvas.
+The panel on the right styles every selected shape: its color, the opacity of its background, the **Corner radius** of a rectangle (from square corners, 0, up to half its smallest side; the radius is kept when the rectangle is resized), the size and alignment of its text, its **Bold**, **Italic** and **Underline** (each applies to the whole text, and they combine), and whether it is in front of or behind the others. It slides in from the right as soon as something is selected, and slides out when nothing is, leaving its room to the canvas.
 
-Select a shape and click **Copy style** (**Ctrl+Alt+C**, **Cmd+Option+C** on a Mac) to copy its color, the opacity of its background, the size and alignment of its text, and whether it is bold, italic or underlined; tick **with size** to copy its width and height too. Then select other shapes and click **Paste style** (**Ctrl+Alt+V**, **Cmd+Option+V**). An arrow's style is copied the same way, onto other arrows: its arrowheads, its line, its width, its color, the size of its label and its route.
+Select a shape and click **Copy style** (**Ctrl+Alt+C**, **Cmd+Option+C** on a Mac) to copy its color, the opacity of its background, the corner radius of a rectangle (onto other rectangles), the size and alignment of its text, and whether it is bold, italic or underlined; tick **with size** to copy its width and height too. Then select other shapes and click **Paste style** (**Ctrl+Alt+V**, **Cmd+Option+V**). An arrow's style is copied the same way, onto other arrows: its arrowheads, its line, its width, its color, the size of its label and its route.
 
 ### Tables
 

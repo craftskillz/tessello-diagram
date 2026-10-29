@@ -46,7 +46,16 @@ export interface Anchor {
 export interface Outlined extends Box {
   type?: ShapeType;
   anchors?: readonly Anchor[];
+  /** A rectangle: the radius of its corners, as asked (see `cornerRadiusOf`). */
+  cornerRadius?: number;
 }
+
+/**
+ * The radius a shape draws its corners with, in units of the drawing: that asked of a rectangle, within half its smallest
+ * side, so that resizing never loses what was asked. Any other shape, and a box without a type, has square corners.
+ */
+export const cornerRadiusOf = (shape: { type?: ShapeType; w: number; h: number; cornerRadius?: number }): number =>
+  shape.type === "rect" ? Math.max(0, Math.min(shape.cornerRadius ?? 0, shape.w / 2, shape.h / 2)) : 0;
 
 /**
  * How far along the ray from the center through `local` (a point in the frame of the shape, not at its center) the
@@ -64,10 +73,31 @@ function outlineFactor(shape: Outlined, local: Point): number {
     }
     case "database":
       return cylinderFactor(a, b, local);
-    default:
+    default: {
       // The sides of a rectangle are axis-aligned in its frame.
-      return 1 / Math.max(Math.abs(local.x) / a, Math.abs(local.y) / b);
+      const square = 1 / Math.max(Math.abs(local.x) / a, Math.abs(local.y) / b);
+      return roundedFactor(a, b, cornerRadiusOf(shape), local, square);
+    }
   }
+}
+
+/**
+ * The outline of a rectangle of half-width `a` and half-height `b` with corners of radius `r`: where the square box is
+ * crossed at `square` times `local`, the same unless that is within a corner, where the corner's circle is crossed instead.
+ */
+function roundedFactor(a: number, b: number, r: number, local: Point, square: number): number {
+  const x = Math.abs(local.x) * square;
+  const y = Math.abs(local.y) * square;
+  if (r <= 0 || x <= a - r || y <= b - r) return square;
+  // The circle centered at (cx, cy) in the quadrant of the point: |t·(x, y) − (cx, cy)| = r, whose larger root is the far crossing.
+  const cx = a - r;
+  const cy = b - r;
+  const dx = Math.abs(local.x);
+  const dy = Math.abs(local.y);
+  const qa = dx * dx + dy * dy;
+  const qb = -2 * (dx * cx + dy * cy);
+  const qc = cx * cx + cy * cy - r * r;
+  return (-qb + Math.sqrt(qb * qb - 4 * qa * qc)) / (2 * qa);
 }
 
 /** The height of the lids of a database, half the height of its ellipses, as in living-documentation. */

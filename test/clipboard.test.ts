@@ -42,6 +42,14 @@ describe("copying a selection", () => {
 });
 
 describe("pasting", () => {
+  test("keeps the corner radius of a rectangle", () => {
+    const diagram = sample();
+    diagram.shapes[2].cornerRadius = 0;
+    diagram.shapes[0].cornerRadius = 18;
+    pasteItems(diagram, copyItems(diagram, ["api", "web"]), 40, ids);
+    assert.deepEqual(diagram.shapes.slice(3).map((shape) => shape.cornerRadius), [18, 0]);
+  });
+
   test("adds new shapes, moved by the offset, and arrows joining the new shapes", () => {
     const diagram = sample();
     const pasted = pasteItems(diagram, copyItems(diagram, ["api", "db"]), 40, ids);
@@ -92,6 +100,21 @@ describe("pasting", () => {
 });
 
 describe("copying a style", () => {
+  test("a rectangle gives its corner radius to the rectangles it is pasted on, not to other shapes", () => {
+    const source = { ...newShape("s", { x: 0, y: 0 }, 0), cornerRadius: 0 };
+    const rect = newShape("r", { x: 0, y: 200 }, 1);
+    const ellipse = newShape("e", { x: 500, y: 0 }, 2, "ellipse");
+    applyStyle(copyStyle(source, false), [rect, ellipse], []);
+    assert.equal(rect.cornerRadius, 0);
+    assert.equal("cornerRadius" in ellipse, false);
+  });
+
+  test("a style copied from another shape leaves the corner radius of a rectangle as it is", () => {
+    const rect = { ...newShape("r", { x: 0, y: 200 }, 1), cornerRadius: 14 };
+    applyStyle(copyStyle(newShape("e", { x: 500, y: 0 }, 2, "ellipse"), false), [rect], []);
+    assert.equal(rect.cornerRadius, 14);
+  });
+
   test("a shape gives its color, opacity, text size and alignment, and its size when asked", () => {
     const source = { ...newShape("s", { x: 0, y: 0 }, 0), color: "c-blue", opacity: 0.5, fontSize: 20, textAlign: "left" as const, textValign: "top" as const, w: 300, h: 90 };
     const target = { ...newShape("t", { x: 500, y: 0 }, 1, "ellipse"), text: "kept" };

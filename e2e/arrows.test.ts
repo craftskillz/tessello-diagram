@@ -251,17 +251,18 @@ test("an end attached to the north-east port follows the shape turned by 90°, u
   const { page, host } = opened;
   await newDiagram(opened, "Ports");
   await addRectangle(opened, 200, 0, "B");
-  // While the arrow is drawn, the shape shows its ports; the north-east one is the top-right corner, at (260, −30).
+  // While the arrow is drawn, the shape shows its ports; the north-east one is on the rounded top-right corner, toward
+  // (260, −30) from the center: at (257.6, −28.8), the corners having a radius of 6.
   await tool(page, "Arrow (F)");
-  await saved(host, async () => drag(page, await at(page, -100, 0), await at(page, 260, -30)));
+  await saved(host, async () => drag(page, await at(page, -100, 0), await at(page, 258, -29)));
   const name = "Arrow from (-100, 0) to Rectangle B at NE";
-  near((await arrowEnds(page, name)).tip, { x: 260, y: -30 });
+  near((await arrowEnds(page, name)).tip, { x: 257.6, y: -28.8 });
 
   await tool(page, "Select (S)");
   await page.getByRole("img", { name: "Rectangle B", exact: true }).click();
   for (let turn = 0; turn < 9; turn++) await saved(host, () => page.getByRole("button", { name: "Rotate right by 10°" }).click());
-  // Turned a quarter turn clockwise, the top-right corner of B is at its bottom-right, at (230, 60).
-  near((await arrowEnds(page, name)).tip, { x: 230, y: 60 });
+  // Turned a quarter turn clockwise, the top-right corner of B is at its bottom-right, at (228.8, 57.6).
+  near((await arrowEnds(page, name)).tip, { x: 228.8, y: 57.6 });
 
   const point = await pointOn(page, name, 0.5);
   await page.mouse.click(point.x, point.y);

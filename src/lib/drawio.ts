@@ -5,7 +5,7 @@
 
 import { layoutArrows, type Path, pointAlong } from "./arrows.ts";
 import type { Arrow, Diagram, LabelPlacement, Shape } from "./diagram.ts";
-import { degrees, type Endpoint, isAttached, lidOf, type Outlined, type Point, portPoint, portsOf } from "./geometry.ts";
+import { cornerRadiusOf, degrees, type Endpoint, isAttached, lidOf, type Outlined, type Point, portPoint, portsOf } from "./geometry.ts";
 import { outlineOf, pictureKeyOf, type ShapeLibrary } from "./library.ts";
 import { boundsOf } from "./placement.ts";
 import { cellStyleOf, columnEdges, rowEdges, tableOf } from "./table.ts";
@@ -104,8 +104,11 @@ function outlineStyle(shape: Shape, picture: Picture): { parts: string[]; body: 
       return { parts: ["shape=table", "startSize=0", "container=1", "collapsible=0", "childLayout=tableLayout"], body: true, inside: false };
     case "text":
       return { parts: ["text", "strokeColor=none", "fillColor=none"], body: false, inside: true };
-    default:
-      return { parts: ["rounded=1", "absoluteArcSize=1", "arcSize=12"], body: true, inside: true };
+    default: {
+      // The absolute arc size of draw.io is the diameter of the corners, twice their radius.
+      const radius = cornerRadiusOf(shape);
+      return { parts: radius > 0 ? ["rounded=1", "absoluteArcSize=1", `arcSize=${num(radius * 2)}`] : ["rounded=0"], body: true, inside: true };
+    }
   }
 }
 

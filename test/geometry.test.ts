@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { arrowHead, boxWithin, connectionHandlePoint, connectionPort, degrees, outlinePoint, portDirection, portPoint, portsOf, resizeBox, shapeAt } from "../src/lib/geometry.ts";
+import { arrowHead, boxWithin, connectionHandlePoint, connectionPort, contains, cornerRadiusOf, degrees, exitPoint, outlinePoint, portDirection, portPoint, portsOf, resizeBox, rotate, shapeAt } from "../src/lib/geometry.ts";
 import { newShape } from "../src/lib/diagram.ts";
 import { tableAnchors } from "../src/lib/table.ts";
 
@@ -336,4 +336,82 @@ test("a table has the outline of a rectangle: an arrow attaches to its sides and
   assert.deepEqual(outlinePoint(table, { x: 500, y: 0 }), { x: 120, y: 0 });
   assert.deepEqual(portPoint(table, "SE"), { x: 120, y: 45 });
   assert.deepEqual(portsOf(table), portsOf({ type: "rect" }));
+});
+
+describe("a rectangle with rounded corners", () => {
+  const rounded = { type: "rect" as const, x: 0, y: 0, w: 120, h: 60, rotation: 0, cornerRadius: 20 };
+  // The center of the circle of the north-east corner: 20 in from each side.
+  const centre = { x: 40, y: -10 };
+  const fromCentre = (point: { x: number; y: number }, of = centre) => Math.hypot(point.x - of.x, point.y - of.y);
+
+  test("a radius of 0 behaves as the square box", () => {
+    const square = { ...rounded, cornerRadius: 0 };
+    close(outlinePoint(square, { x: 1200, y: -600 }), { x: 60, y: -30 });
+    close(portPoint(square, "NE"), { x: 60, y: -30 });
+    assert.equal(contains(square, { x: 59, y: -29 }), true);
+  });
+
+  test("the automatic end toward a far point on the diagonal lands on the arc, not at the square corner", () => {
+    const end = outlinePoint(rounded, { x: 1200, y: -600 });
+    assert.ok(Math.abs(fromCentre(end) - 20) < 1e-9, `${JSON.stringify(end)} is not on the arc`);
+    assert.ok(end.x < 60 && end.y > -30);
+  });
+
+  test("the points along the straight sides are unchanged", () => {
+    close(outlinePoint(rounded, { x: 300, y: 0 }), { x: 60, y: 0 });
+    close(outlinePoint(rounded, { x: 0, y: -300 }), { x: 0, y: -30 });
+    // Toward (120, 10), the right side is crossed at y = 5, within its straight part (|y| ≤ 10).
+    close(outlinePoint(rounded, { x: 120, y: 10 }), { x: 60, y: 5 });
+  });
+
+  test("the corner ports are on the arc, in the direction of the corner from the center", () => {
+    for (const [port, sx, sy] of [["NE", 1, -1], ["SE", 1, 1], ["SW", -1, 1], ["NW", -1, -1]] as const) {
+      const at = portPoint(rounded, port);
+      assert.ok(Math.abs(fromCentre(at, { x: sx * 40, y: sy * 10 }) - 20) < 1e-9, `${port} is not on the arc`);
+      assert.ok(Math.abs(at.x * 60 * sy - at.y * 120 * sx) < 1e-6, `${port} is not on the diagonal`);
+    }
+    close(portPoint(rounded, "E"), { x: 60, y: 0 });
+  });
+
+  test("the arc follows the rotation of the rectangle", () => {
+    for (const rotation of [30, 90]) {
+      const turned = { ...rounded, rotation, x: 200, y: 100 };
+      const at = portPoint(turned, "NE");
+      const turnedCentre = rotate(centre, rotation);
+      assert.ok(Math.abs(fromCentre(at, { x: 200 + turnedCentre.x, y: 100 + turnedCentre.y }) - 20) < 1e-9);
+      const end = outlinePoint(turned, { x: 200 + rotate({ x: 1200, y: -600 }, rotation).x, y: 100 + rotate({ x: 1200, y: -600 }, rotation).y });
+      close(end, at);
+    }
+  });
+
+  test("contains and the shape under a point follow the arc near the corners", () => {
+    assert.equal(contains(rounded, { x: 59, y: -29 }), false);
+    assert.equal(contains(rounded, { x: 52, y: -22 }), true);
+    assert.equal(contains(rounded, { x: 59, y: 0 }), true);
+    assert.equal(shapeAt([{ ...rounded, z: 0 }], { x: 59, y: -29 }), undefined);
+  });
+
+  test("an arrow leaving from beside the center stops at the arc", () => {
+    const end = exitPoint(rounded, { x: 30, y: -5 }, { x: 1200, y: -600 });
+    assert.ok(Math.abs(fromCentre(end) - 20) < 1e-6 || end.x === 60 || end.y === -30);
+    assert.equal(contains(rounded, { x: end.x - 1e-3 * (end.x - 30), y: end.y - 1e-3 * (end.y + 5) }), true);
+    assert.equal(contains(rounded, { x: end.x + 1e-3 * (end.x - 30), y: end.y + 1e-3 * (end.y + 5) }), false);
+  });
+
+  test("a radius beyond half the smallest side is clamped to it", () => {
+    const wide = { type: "rect" as const, x: 0, y: 0, w: 100, h: 40, rotation: 0 };
+    assert.equal(cornerRadiusOf({ ...wide, cornerRadius: 999 }), 20);
+    for (const toward of [{ x: 1000, y: -400 }, { x: 300, y: -60 }, { x: 0, y: -50 }]) {
+      close(outlinePoint({ ...wide, cornerRadius: 999 }, toward), outlinePoint({ ...wide, cornerRadius: 20 }, toward));
+    }
+    close(portPoint({ ...wide, cornerRadius: 999 }, "NE"), portPoint({ ...wide, cornerRadius: 20 }, "NE"));
+  });
+
+  test("only a rectangle has rounded corners", () => {
+    assert.equal(cornerRadiusOf({ type: "rect", w: 120, h: 60, cornerRadius: 6 }), 6);
+    assert.equal(cornerRadiusOf({ type: "table", w: 120, h: 60, cornerRadius: 6 }), 0);
+    assert.equal(cornerRadiusOf({ type: "custom", w: 120, h: 60, cornerRadius: 6 }), 0);
+    assert.equal(cornerRadiusOf({ w: 120, h: 60 }), 0);
+    close(outlinePoint({ ...rounded, type: "table" }, { x: 1200, y: -600 }), { x: 60, y: -30 });
+  });
 });

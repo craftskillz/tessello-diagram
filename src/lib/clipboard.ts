@@ -89,9 +89,10 @@ export function pasteItems(diagram: Diagram, clip: Clip, offset: number, idOf: (
 }
 
 /** A copied style: of a shape, with its size when asked, or of an arrow. It applies to what is of the same kind. A shape's
- * bold, italic and underline are part of it, whatever its type. */
+ * bold, italic and underline are part of it, whatever its type.
+ * The corner radius is that of a rectangle, and goes only to rectangles. */
 export type Style =
-  | { kind: "shape"; values: Partial<Pick<Shape, "color" | "opacity" | "fontSize" | "textAlign" | "textValign" | "bold" | "italic" | "underline" | "w" | "h">> }
+  | { kind: "shape"; values: Partial<Pick<Shape, "color" | "opacity" | "fontSize" | "textAlign" | "textValign" | "bold" | "italic" | "underline" | "w" | "h" | "cornerRadius">> }
   | { kind: "arrow"; values: Pick<Arrow, "heads" | "dashed" | "width" | "color" | "labelSize" | "route"> };
 
 const isArrow = (item: Shape | Arrow): item is Arrow => "from" in item;
@@ -104,11 +105,16 @@ export function copyStyle(item: Shape | Arrow, withSize: boolean): Style {
   }
   const { color, opacity, fontSize, textAlign, textValign, w, h } = item;
   const text = { color, opacity, fontSize, textAlign, textValign, bold: item.bold === true, italic: item.italic === true, underline: item.underline === true };
-  return { kind: "shape", values: withSize ? { ...text, w, h } : text };
+  const style = item.type === "rect" && item.cornerRadius !== undefined ? { ...text, cornerRadius: item.cornerRadius } : text;
+  return { kind: "shape", values: withSize ? { ...style, w, h } : style };
 }
 
 /** "Paste style": applies a copied style to the shapes, or to the arrows, as it was copied from one or the other. */
 export function applyStyle(style: Style, shapes: readonly Shape[], arrows: readonly Arrow[]): void {
   if (style.kind === "arrow") return void arrows.forEach((arrow) => Object.assign(arrow, style.values));
-  for (const shape of shapes) Object.assign(shape, style.values);
+  const { cornerRadius, ...values } = style.values;
+  for (const shape of shapes) {
+    Object.assign(shape, values);
+    if (shape.type === "rect" && cornerRadius !== undefined) shape.cornerRadius = cornerRadius;
+  }
 }

@@ -6,7 +6,7 @@
   // the picture of its definition, or a dashed frame with its name when its definition is deleted. A shape with a link
   // shows a chain at its bottom right corner, in the blue of the palette for a page, and its orange for a diagram.
   import type { Shape } from "../lib/diagram.ts";
-  import { lidOf } from "../lib/geometry.ts";
+  import { cornerRadiusOf, lidOf } from "../lib/geometry.ts";
   import { t } from "../lib/i18n.ts";
   import { type CellRange, cellBox, cellStyleOf, columnEdges, inRange, rowEdges, tableOf } from "../lib/table.ts";
   import { layoutCell, layoutText, type Measure } from "../lib/text.ts";
@@ -141,7 +141,7 @@
     {/if}
     <rect class="dg-frame" class:missing={deleted} x={-w / 2} y={-h / 2} width={w} height={h} />
   {:else}
-    <rect class="dg-body" x={-w / 2} y={-h / 2} width={w} height={h} rx="6" fill-opacity={shape.opacity} />
+    <rect class="dg-body" x={-w / 2} y={-h / 2} width={w} height={h} rx={cornerRadiusOf(shape)} fill-opacity={shape.opacity} />
   {/if}
   {#if shape.link}
     <g class="dg-link {shape.link.type === 'url' ? 'c-blue' : 'c-orange'}" data-link={shape.link.type} transform="translate({w / 2 - 2} {h / 2 - 2})">

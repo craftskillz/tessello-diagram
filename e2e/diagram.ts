@@ -118,6 +118,7 @@ type StoredShape = {
   h: number;
   rotation: number;
   textRotation: number;
+  cornerRadius?: number;
   color: string;
   fontSize: number;
   bold?: boolean;

@@ -1,12 +1,13 @@
 <script lang="ts">
-  // The style of the selected shapes: color, opacity of the fill, text size, bold, italic, underline and alignments,
-  // rotation of the shape and of its text, and order; their group, their lock, and the copy of a style; the link of a
-  // single shape. A control applies to every selected shape, and a change is saved when it is made. On a table, the color,
-  // the text size, the bold, italic and underline and the alignments style the selected cells when there are some, else
-  // the whole table, which erases the own style of its cells. "Save as default for this shape type" makes the style of one
-  // built-in shape the default of its type. The panel is docked beside the canvas, so that it never hides the drawing.
+  // The style of the selected shapes: color, opacity of the fill, corner radius of the rectangles, text size, bold,
+  // italic, underline and alignments, rotation of the shape and of its text, and order; their group, their lock, and the
+  // copy of a style; the link of a single shape. A control applies to every selected shape, and a change is saved when
+  // it is made. On a table, the color, the text size, the bold, italic and underline and the alignments style the selected
+  // cells when there are some, else the whole table, which erases the own style of its cells. "Save as default for this
+  // shape type" makes the style of one built-in shape the default of its type. The panel is docked beside the canvas, so
+  // that it never hides the drawing.
   import { isBuiltIn, shapeAsDefault } from "../lib/defaults.ts";
-  import { type CellStyle, clampFontSize, COLORS, FONT_SIZES, groupShapes, LABEL_PLACEMENTS, type LabelPlacement, reorder, type Shape, ungroupShapes } from "../lib/diagram.ts";
+  import { type CellStyle, clampFontSize, COLORS, CORNER_RADIUS, FONT_SIZES, groupShapes, LABEL_PLACEMENTS, type LabelPlacement, reorder, type Shape, ungroupShapes } from "../lib/diagram.ts";
   import { degrees } from "../lib/geometry.ts";
   import { type CellRange, MAX_CELLS, setColumnCount, setRowCount, sharedCellStyle, styleCells, styleTable, tableOf, wholeRange } from "../lib/table.ts";
   import { t } from "../lib/i18n.ts";
@@ -63,6 +64,15 @@
     shapes.forEach(change);
     void save();
   }
+
+  /** The largest useful corner radius of a rectangle: half its smallest side, in whole units. */
+  const usefulRadius = (shape: Shape): number => Math.floor(Math.min(shape.w, shape.h) / 2);
+
+  /** The largest useful corner radius of the selection: that of its largest rectangle, each rectangle keeping within its own. */
+  const maxCornerRadius = $derived(Math.max(0, ...shapes.map(usefulRadius)));
+
+  /** Sets the corner radius of a rectangle, in whole units, from 0 up to its useful one. */
+  const setCornerRadius = (shape: Shape, value: number) => (shape.cornerRadius = Math.min(Math.max(Math.round(value), 0), usefulRadius(shape)));
 
   function setFontSize(value: number) {
     if (Number.isFinite(value)) style({ fontSize: clampFontSize(value) });
@@ -133,6 +143,35 @@
       />
       <output>{Math.round((shared("opacity") ?? first.opacity) * 100)}%</output>
     </label>
+
+    {#if shapes.every((shape) => shape.type === "rect")}
+      <!-- Each rectangle up to half its smallest side; the radius asked for is kept when one is resized. -->
+      <label class="dg-field">
+        <span>{t("corner_radius")}</span>
+        <input
+          type="range"
+          min="0"
+          max={maxCornerRadius}
+          step="1"
+          value={shared("cornerRadius") ?? first.cornerRadius ?? CORNER_RADIUS}
+          oninput={(event) => shapes.forEach((shape) => setCornerRadius(shape, Number(event.currentTarget.value)))}
+          onchange={() => void save()}
+        />
+        <input
+          type="number"
+          aria-label={t("corner_radius")}
+          min="0"
+          max={maxCornerRadius}
+          step="1"
+          value={shared("cornerRadius") ?? ""}
+          onchange={(event) => {
+            const next = event.currentTarget.valueAsNumber;
+            if (Number.isFinite(next)) apply((shape) => setCornerRadius(shape, next));
+            event.currentTarget.value = String(shared("cornerRadius") ?? "");
+          }}
+        />
+      </label>
+    {/if}
 
     <label class="dg-field">
       <span>{t("font_size")}</span>

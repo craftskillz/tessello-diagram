@@ -48,6 +48,7 @@ describe("reading a stored diagram", () => {
           locked: false,
           link: null,
           z: 0,
+          cornerRadius: 10,
         },
       ],
       arrows: [
@@ -83,7 +84,7 @@ describe("reading a stored diagram", () => {
     assert.equal(read.title, "");
     assert.deepEqual(
       { ...read.shapes[0] },
-      { id: "s1", type: "rect", x: 10, y: 20, w: 120, h: 60, rotation: 0, text: "", fontSize: 14, textAlign: "center", textValign: "middle", textRotation: 0, color: "c-gray", opacity: 1, groupId: null, locked: false, link: null, z: 0 },
+      { id: "s1", type: "rect", x: 10, y: 20, w: 120, h: 60, rotation: 0, text: "", fontSize: 14, textAlign: "center", textValign: "middle", textRotation: 0, color: "c-gray", opacity: 1, groupId: null, locked: false, link: null, z: 0, cornerRadius: 6 },
     );
     assert.deepEqual(read.arrows[0].from, { shapeId: "s1", port: null });
     assert.deepEqual(read.arrows[0].to, { shapeId: "s1", port: "N" });
@@ -366,5 +367,31 @@ describe("a table", () => {
 
   test("is the only shape that carries cells", () => {
     assert.equal("cells" in readDiagram({ shapes: [{ id: "s", x: 0, y: 0, cells: [["a"]], columns: [1] }] }, "d1").shapes[0], false);
+  });
+});
+
+describe("the corner radius of a rectangle", () => {
+  const read = (type: string, fields: object = {}) => readDiagram({ shapes: [{ id: "s", x: 0, y: 0, type, ...fields }] }, "d1").shapes[0];
+
+  test("a new rectangle has 6, and no other shape has one", () => {
+    assert.equal(newShape("s", { x: 0, y: 0 }, 0).cornerRadius, 6);
+    for (const type of ["ellipse", "database", "circle", "actor", "postit", "text", "table", "image", "custom"] as const) {
+      assert.equal(newShape("s", { x: 0, y: 0 }, 0, type).cornerRadius, undefined);
+    }
+  });
+
+  test("a stored rectangle without one keeps the rounding it had, and an explicit 0 is kept", () => {
+    assert.equal(read("rect").cornerRadius, 6);
+    assert.equal(read("rect", { cornerRadius: 0 }).cornerRadius, 0);
+    assert.equal(read("rect", { cornerRadius: 14.5 }).cornerRadius, 14.5);
+    assert.equal(read("rect", { cornerRadius: 500 }).cornerRadius, 500);
+  });
+
+  test("a radius that is negative or not a number is 6", () => {
+    for (const cornerRadius of [-1, "8", null, NaN, Infinity, {}]) assert.equal(read("rect", { cornerRadius }).cornerRadius, 6);
+  });
+
+  test("is not read on any other shape", () => {
+    for (const type of ["ellipse", "postit", "table", "image"]) assert.equal(read(type, { cornerRadius: 12 }).cornerRadius, undefined);
   });
 });
