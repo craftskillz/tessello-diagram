@@ -110,6 +110,7 @@ type StoredShape = {
   text: string;
   cells?: string[][];
   columns?: number[];
+  rows?: number[];
   cellStyles?: Record<string, unknown>[][];
   x: number;
   y: number;

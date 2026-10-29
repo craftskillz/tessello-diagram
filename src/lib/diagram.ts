@@ -111,10 +111,12 @@ export interface Shape {
   /** A custom shape: its definition, and where its text goes, taken from its definition and changed on the shape itself. */
   customShapeRef?: CustomShapeRef;
   labelPlacement?: LabelPlacement;
-  /** A table: the text of its cells, by row then column; every row has as many cells, and there is at least one. Its rows share its height equally. */
+  /** A table: the text of its cells, by row then column; every row has as many cells, and there is at least one. */
   cells?: string[][];
   /** A table: the width of each column, as a part of the width of the table; one per column, they sum to 1. */
   columns?: number[];
+  /** A table: the height of each row, as a part of the height of the table; one per row, they sum to 1. */
+  rows?: number[];
   /** The text style of the shape, on its whole text; absent is off. For a table, the style of the cells that have none of their own. */
   bold?: boolean;
   italic?: boolean;
@@ -181,7 +183,7 @@ export interface DiagramEntry {
 /** A new shape centered on a point, with the creation values of its type. */
 export function newShape(id: string, at: Point, z: number, type: ShapeType = "rect"): Shape {
   const { w, h, color } = CREATION[type];
-  const table = type === "table" ? { cells: Array.from({ length: 3 }, () => ["", "", ""]), columns: [1 / 3, 1 / 3, 1 / 3], cellStyles: Array.from({ length: 3 }, () => [{}, {}, {}]) } : {};
+  const table = type === "table" ? { cells: Array.from({ length: 3 }, () => ["", "", ""]), columns: [1 / 3, 1 / 3, 1 / 3], rows: [1 / 3, 1 / 3, 1 / 3], cellStyles: Array.from({ length: 3 }, () => [{}, {}, {}]) } : {};
   return {
     ...table,
     id,
@@ -361,22 +363,28 @@ function readShape(value: unknown): Shape | null {
 }
 
 /**
- * The cells, column widths and cell styles of a table. Rows that are not lists are skipped, short ones are padded with
- * empty cells, and what is not text is an empty cell; a table has one cell at least. Column widths that are not one
- * positive number per column are replaced by equal ones, and the others are scaled to sum to 1. The styles of the cells
- * are padded or truncated to the cells, each keeping only its valid keys; anything else is a cell that follows the table.
+ * The cells, column widths, row heights and cell styles of a table. Rows that are not lists are skipped, short ones are
+ * padded with empty cells, and what is not text is an empty cell; a table has one cell at least. Column widths (and row
+ * heights) that are not one positive number per column (or row) are replaced by equal ones, and the others are scaled to
+ * sum to 1. The styles of the cells are padded or truncated to the cells, each keeping only its valid keys; anything
+ * else is a cell that follows the table.
  */
-function readTable(value: StoredFields): Pick<Shape, "cells" | "columns" | "cellStyles"> {
-  const rows = Array.isArray(value.cells) ? value.cells.filter(Array.isArray) : [];
-  const count = Math.max(1, ...rows.map((row) => row.length));
-  const cells = rows.length ? rows.map((row) => Array.from({ length: count }, (_, col) => textOr(row[col], ""))) : [[""]];
-  const stored = Array.isArray(value.columns) ? value.columns : [];
-  const valid = stored.length === count && stored.every((width) => isNumber(width) && width > 0);
-  const total = valid ? stored.reduce((sum: number, width: number) => sum + width, 0) : 0;
+function readTable(value: StoredFields): Pick<Shape, "cells" | "columns" | "rows" | "cellStyles"> {
+  const lines = Array.isArray(value.cells) ? value.cells.filter(Array.isArray) : [];
+  const count = Math.max(1, ...lines.map((row) => row.length));
+  const cells = lines.length ? lines.map((row) => Array.from({ length: count }, (_, col) => textOr(row[col], ""))) : [[""]];
+  /** The parts stored for `length` lines: scaled to sum to 1, or equal when they do not fit. */
+  const partsOf = (stored: unknown, length: number): number[] => {
+    const parts = Array.isArray(stored) ? stored : [];
+    const total = parts.reduce((sum: number, part) => sum + (isNumber(part) ? part : 0), 0);
+    const valid = parts.length === length && parts.every((part) => isNumber(part) && part > 0);
+    return valid ? parts.map((part: number) => part / total) : Array.from({ length }, () => 1 / length);
+  };
   const styles = Array.isArray(value.cellStyles) ? value.cellStyles : [];
   return {
     cells,
-    columns: valid ? stored.map((width: number) => width / total) : Array.from({ length: count }, () => 1 / count),
+    columns: partsOf(value.columns, count),
+    rows: partsOf(value.rows, cells.length),
     cellStyles: cells.map((row, r) => row.map((_, c) => readCellStyle(Array.isArray(styles[r]) ? styles[r][c] : undefined))),
   };
 }

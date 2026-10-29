@@ -8,7 +8,7 @@ import type { Arrow, Diagram, LabelPlacement, Shape } from "./diagram.ts";
 import { degrees, type Endpoint, isAttached, lidOf, type Outlined, type Point, portPoint, portsOf } from "./geometry.ts";
 import { outlineOf, pictureKeyOf, type ShapeLibrary } from "./library.ts";
 import { boundsOf } from "./placement.ts";
-import { cellStyleOf, columnEdges, tableOf } from "./table.ts";
+import { cellStyleOf, columnEdges, rowEdges, tableOf } from "./table.ts";
 
 /** The colors of each key of the palette, in its light variant (base.css): fill, outline and text. */
 const PALETTE: Record<string, { fill: string; stroke: string; text: string }> = {
@@ -147,7 +147,7 @@ const CELL_STYLE = ["shape=partialRectangle", "html=1", "whiteSpace=wrap", "conn
 function tableChildren(shape: Shape): string {
   const { cells } = tableOf(shape);
   const edges = columnEdges(shape).map((edge) => edge + shape.w / 2);
-  const h = shape.h / cells.length;
+  const tops = rowEdges(shape).map((edge) => edge + shape.h / 2);
   const vertex = (id: string, value: string, style: string[], parent: string, geometry: string) =>
     `<mxCell id="${attribute(id)}" value="${attribute(value)}" style="${attribute(styleOf(style))}" vertex="1" parent="${attribute(parent)}"><mxGeometry ${geometry} as="geometry"/></mxCell>`;
   const cellStyle = (r: number, c: number) => {
@@ -164,8 +164,9 @@ function tableChildren(shape: Shape): string {
   return cells
     .map((row, r) => {
       const rowId = `${shape.id}-r${r}`;
+      const h = tops[r + 1] - tops[r];
       return (
-        vertex(rowId, "", ROW_STYLE, shape.id, `y="${num(r * h)}" width="${num(shape.w)}" height="${num(h)}"`) +
+        vertex(rowId, "", ROW_STYLE, shape.id, `y="${num(tops[r])}" width="${num(shape.w)}" height="${num(h)}"`) +
         row.map((text, c) => vertex(`${rowId}-c${c}`, html(text), cellStyle(r, c), rowId, `x="${num(edges[c])}" width="${num(edges[c + 1] - edges[c])}" height="${num(h)}"`)).join("")
       );
     })

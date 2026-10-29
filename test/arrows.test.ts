@@ -3,7 +3,7 @@ import { describe, test } from "node:test";
 import { newShape } from "../src/lib/diagram.ts";
 import { contains, type Outlined } from "../src/lib/geometry.ts";
 import { outlineOf } from "../src/lib/library.ts";
-import { dragSeparator, setColumnCount, setRowCount, type TableChange } from "../src/lib/table.ts";
+import { dragRowSeparator, dragSeparator, setColumnCount, setRowCount, type TableChange } from "../src/lib/table.ts";
 import { arrowAt, constrainAngle, distanceTo, endAt, endOf, headOf, headsOf, isDrawable, labelPlacement, labelPoint, layoutArrows, type Path, pathWithin, pointAlong, shiftSegment, snapWaypoint, startOf } from "../src/lib/arrows.ts";
 
 const close = (actual: { x: number; y: number }, expected: { x: number; y: number }, within = 1e-9) => {
@@ -106,6 +106,12 @@ describe("an arrow attached to a cell of a table", () => {
     // The first column widened by 40, its left side fixed: the table is 280 wide, centered on (20, 0), and the middle
     // of the second column is at 20 from that center.
     close(startFrom(changed(dragSeparator(base, 0, 40)), "r2c1-S"), { x: 40, y: 45 });
+  });
+
+  test("follows its cell when a row is resized", () => {
+    // The first row made 30 higher, its top fixed: the table is 120 high, centered on (0, 15), its rows run from -45 to 15, 45 and 75.
+    close(startFrom(changed(dragRowSeparator(base, 0, 30)), "r1c0-W"), { x: -120, y: 30 });
+    close(startFrom(changed(dragRowSeparator(base, 0, 30)), "r2c1-S"), { x: 0, y: 75 });
   });
 
   test("leaves an elbow perpendicular to the border", () => {

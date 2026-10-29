@@ -289,12 +289,14 @@ describe("a table", () => {
     assert.deepEqual([table.w, table.h, table.color], [240, 90, "c-gray"]);
     assert.deepEqual(table.cells, [["", "", ""], ["", "", ""], ["", "", ""]]);
     assert.deepEqual(table.columns, [1 / 3, 1 / 3, 1 / 3]);
+    assert.deepEqual(table.rows, [1 / 3, 1 / 3, 1 / 3]);
   });
 
   test("is read back with its cells and column widths", () => {
     const table = newShape("t1", { x: 5, y: 5 }, 0, "table");
     table.cells = [["a", "b"], ["c", "d"]];
     table.columns = [0.25, 0.75];
+    table.rows = [0.4, 0.6];
     table.cellStyles = [[{}, {}], [{}, {}]];
     assert.deepEqual(readDiagram(JSON.parse(JSON.stringify({ shapes: [table] })), "d1").shapes[0], table);
   });
@@ -319,6 +321,14 @@ describe("a table", () => {
     }
   });
 
+  test("with row heights that do not fit its rows, or that are not positive, has equal rows; the others are scaled to sum to 1", () => {
+    for (const rows of [undefined, [1], [1, 1, 1], [1, 0], [1, -2], [1, "x"], "high"]) {
+      assert.deepEqual(read({ cells: [["a"], ["b"]], rows }).rows, [0.5, 0.5]);
+    }
+    assert.deepEqual(read({ cells: [["a"], ["b"], ["c"]], rows: [1, 1, 2] }).rows, [0.25, 0.25, 0.5]);
+    assert.deepEqual(read({ cells: undefined }).rows, [1]);
+  });
+
   test("is created with 3 × 3 cells that follow it, and no text style of its own", () => {
     const table = newShape("t1", { x: 0, y: 0 }, 0, "table");
     assert.deepEqual(table.cellStyles, Array.from({ length: 3 }, () => [{}, {}, {}]));
@@ -329,6 +339,7 @@ describe("a table", () => {
     const table = newShape("t1", { x: 5, y: 5 }, 0, "table");
     table.cells = [["a", "b"], ["c", "d"]];
     table.columns = [0.5, 0.5];
+    table.rows = [0.5, 0.5];
     table.bold = true;
     table.cellStyles = [[{ color: "c-blue", fontSize: 20, italic: true }, {}], [{}, { textAlign: "right", textValign: "bottom", underline: true, bold: false }]];
     assert.deepEqual(readDiagram(JSON.parse(JSON.stringify({ shapes: [table] })), "d1").shapes[0], table);

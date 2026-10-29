@@ -264,6 +264,16 @@ describe("converting a diagram to draw.io", () => {
     assert.ok(xml.indexOf('id="t1"') < xml.indexOf('id="t1-r0"') && xml.indexOf('id="t1-r0"') < xml.indexOf('id="t1-r0-c0"'));
   });
 
+  test("each row of a table has its own height and y, and its cells the height of their row", () => {
+    const diagram = newDiagram("d1", "Tables", 0);
+    diagram.shapes = [{ ...newShape("t1", { x: 200, y: 100 }, 0, "table"), w: 200, h: 80, cells: [["a"], ["b"]], columns: [1], rows: [0.25, 0.75] }];
+    const { xml } = convert(diagram);
+    assert.deepEqual(geometryOf(cellOf(xml, "t1-r0").inner), { y: "0", width: "200", height: "20", as: "geometry" });
+    assert.deepEqual(geometryOf(cellOf(xml, "t1-r1").inner), { y: "20", width: "200", height: "60", as: "geometry" });
+    assert.equal(geometryOf(cellOf(xml, "t1-r0-c0").inner).height, "20");
+    assert.equal(geometryOf(cellOf(xml, "t1-r1-c0").inner).height, "60");
+  });
+
   test("a cell keeps its own background and font, and one without follows the table", () => {
     const diagram = newDiagram("d1", "Tables", 0);
     diagram.shapes = [

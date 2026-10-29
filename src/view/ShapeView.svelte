@@ -8,7 +8,7 @@
   import type { Shape } from "../lib/diagram.ts";
   import { lidOf } from "../lib/geometry.ts";
   import { t } from "../lib/i18n.ts";
-  import { type CellRange, cellBox, cellStyleOf, columnEdges, inRange, tableOf } from "../lib/table.ts";
+  import { type CellRange, cellBox, cellStyleOf, columnEdges, inRange, rowEdges, tableOf } from "../lib/table.ts";
   import { layoutCell, layoutText, type Measure } from "../lib/text.ts";
 
   let {
@@ -50,7 +50,7 @@
     const { cells } = tableOf(shape);
     return {
       columns: columnEdges(shape).slice(1, -1),
-      rows: Array.from({ length: cells.length - 1 }, (_, row) => -h / 2 + ((row + 1) * h) / cells.length),
+      rows: rowEdges(shape).slice(1, -1),
       cells: cells.flatMap((line, row) =>
         line.map((value, col) => ({ row, col, value, style: cellStyleOf(shape, row, col), box: cellBox(shape, row, col), layout: value ? layoutCell(shape, row, col, measure) : undefined })),
       ),

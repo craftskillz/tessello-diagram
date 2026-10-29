@@ -1,7 +1,8 @@
-// The cells of a table: a grid of text, as a pure function of its shape (diagram.ts). Its rows are all as high as one
-// another, its columns have their own widths, kept as parts of the width of the table, so that resizing the table keeps
-// their proportions. What each function computes is the new box of the table, the center, the size and the widths of its
-// columns, to be applied to the shape. The coordinates "in the frame" are those from its center, without its rotation.
+// The cells of a table: a grid of text, as a pure function of its shape (diagram.ts). Its columns have their own
+// widths and its rows their own heights, kept as parts of the width and height of the table, so that resizing the table
+// keeps their proportions. What each function computes is the new box of the table, the center, the size and the widths
+// and heights of its columns and rows, to be applied to the shape. The coordinates "in the frame" are those from its
+// center, without its rotation.
 
 import { type CellStyle, clampFontSize, type Shape } from "./diagram.ts";
 import { type Anchor, type Corner, cornerSign, PORTS, type Point, rotate } from "./geometry.ts";
@@ -15,20 +16,26 @@ export const MAX_CELLS = 50;
 /** The lowest a row can be, in units of the drawing. */
 export const MIN_ROW = 12;
 
-/** The x of each boundary between the columns, from the left side of the table to its right side, in its frame. */
-export function columnEdges(shape: Shape): number[] {
-  const { columns } = tableOf(shape);
-  let x = -shape.w / 2;
-  return [x, ...columns.map((part) => (x += part * shape.w))].map((edge, i, edges) => (i === edges.length - 1 ? shape.w / 2 : edge));
+/** The boundaries of parts laid end to end along a side of `size` centered on 0, from one end to the other, the last exactly at the end. */
+function edgesAlong(parts: number[], size: number): number[] {
+  let at = -size / 2;
+  return [at, ...parts.map((part) => (at += part * size))].map((edge, i, edges) => (i === edges.length - 1 ? size / 2 : edge));
 }
 
-/** The cells, the column widths and the cell styles of a table; those a shape without them would have, one cell, for safety. */
-export function tableOf(shape: Shape): { cells: string[][]; columns: number[]; cellStyles: CellStyle[][] } {
+/** The x of each boundary between the columns, from the left side of the table to its right side, in its frame. */
+export const columnEdges = (shape: Shape): number[] => edgesAlong(tableOf(shape).columns, shape.w);
+
+/** The y of each boundary between the rows, from the top side of the table to its bottom side, in its frame. */
+export const rowEdges = (shape: Shape): number[] => edgesAlong(tableOf(shape).rows, shape.h);
+
+/** The cells, the column widths, the row heights and the cell styles of a table; those a shape without them would have, one cell, for safety. */
+export function tableOf(shape: Shape): { cells: string[][]; columns: number[]; rows: number[]; cellStyles: CellStyle[][] } {
   const cells = shape.cells?.length && shape.cells[0].length ? shape.cells : [[""]];
   const count = cells[0].length;
   const columns = shape.columns?.length === count ? shape.columns : Array.from({ length: count }, () => 1 / count);
+  const rows = shape.rows?.length === cells.length ? shape.rows : Array.from({ length: cells.length }, () => 1 / cells.length);
   const cellStyles = cells.map((row, r) => row.map((_, c) => shape.cellStyles?.[r]?.[c] ?? {}));
-  return { cells, columns, cellStyles };
+  return { cells, columns, rows, cellStyles };
 }
 
 /** The style a cell shows: its own keys over those of the table. */
@@ -106,8 +113,8 @@ export function sharedCellStyle<K extends keyof CellStyle>(shape: Shape, range: 
 /** The box of a cell around its own center, in the frame of the table. */
 export function cellBox(shape: Shape, row: number, col: number): { x: number; y: number; w: number; h: number } {
   const edges = columnEdges(shape);
-  const h = shape.h / tableOf(shape).cells.length;
-  return { x: (edges[col] + edges[col + 1]) / 2, y: -shape.h / 2 + (row + 0.5) * h, w: edges[col + 1] - edges[col], h };
+  const tops = rowEdges(shape);
+  return { x: (edges[col] + edges[col + 1]) / 2, y: (tops[row] + tops[row + 1]) / 2, w: edges[col + 1] - edges[col], h: tops[row + 1] - tops[row] };
 }
 
 /** The cell a point of the drawing is in, whatever the rotation of the table; none outside it. */
@@ -115,9 +122,9 @@ export function cellAt(shape: Shape, point: Point): { row: number; col: number }
   const local = rotate({ x: point.x - shape.x, y: point.y - shape.y }, -shape.rotation);
   if (Math.abs(local.x) > shape.w / 2 || Math.abs(local.y) > shape.h / 2) return undefined;
   const edges = columnEdges(shape);
-  const rows = tableOf(shape).cells.length;
+  const tops = rowEdges(shape);
   const col = Math.max(0, edges.findIndex((edge, i) => i > 0 && local.x <= edge) - 1);
-  const row = Math.min(rows - 1, Math.floor(((local.y + shape.h / 2) / shape.h) * rows));
+  const row = Math.max(0, tops.findIndex((edge, i) => i > 0 && local.y <= edge) - 1);
   return { row, col };
 }
 
@@ -137,15 +144,15 @@ export const cellAnchors = (shape: Shape, row: number, col: number): TableAnchor
  * The attachment points of a table: those of each cell that lie on the outer border of the table, from north
  * clockwise in each cell, named `r1c2-NE` (row, column, direction within the cell, counted from 0). Neighbouring cells
  * have their own points where they meet, so that an arrow is attached to a cell, and an inner cell has none. They are
- * computed from the columns as they are now, as parts of the width and height from the top-left corner, so that an arrow
- * follows its cell when a column is resized, and from the box of the table, when it is moved, resized or turned. Each
+ * computed from the columns and rows as they are now, as parts of the width and height from the top-left corner, so that an
+ * arrow follows its cell when a column or a row is resized, and from the box of the table, when it is moved, resized or turned. Each
  * faces outward from the side it lies on, diagonally at a corner of the table (its frame, before the rotation).
  */
 export function tableAnchors(shape: Shape): TableAnchor[] {
-  const { cells, columns } = tableOf(shape);
-  const rows = cells.length;
-  const edges = columns.reduce((all, part) => [...all, all[all.length - 1] + part], [0]);
-  edges[edges.length - 1] = 1;
+  const { cells, columns, rows } = tableOf(shape);
+  // Parts of the width and height from the top-left corner: the edges of a side of 1, shifted by a half.
+  const edges = edgesAlong(columns, 1).map((edge) => edge + 0.5);
+  const tops = edgesAlong(rows, 1).map((edge) => edge + 0.5);
   const anchors: TableAnchor[] = [];
   cells.forEach((_, row) => {
     columns.forEach((_, col) => {
@@ -154,11 +161,11 @@ export function tableAnchors(shape: Shape): TableAnchor[] {
         const dy = port.includes("S") ? 1 : port.includes("N") ? -1 : 0;
         const facing = {
           x: dx === 1 && col === columns.length - 1 ? 1 : dx === -1 && col === 0 ? -1 : 0,
-          y: dy === 1 && row === rows - 1 ? 1 : dy === -1 && row === 0 ? -1 : 0,
+          y: dy === 1 && row === rows.length - 1 ? 1 : dy === -1 && row === 0 ? -1 : 0,
         };
         if (facing.x === 0 && facing.y === 0) continue;
         const x = dx === 0 ? (edges[col] + edges[col + 1]) / 2 : edges[dx === 1 ? col + 1 : col];
-        const y = (row + 0.5 + dy / 2) / rows;
+        const y = dy === 0 ? (tops[row] + tops[row + 1]) / 2 : tops[dy === 1 ? row + 1 : row];
         anchors.push({ id: `r${row}c${col}-${port}`, x, y, facing, row, col, direction: port });
       }
     });
@@ -166,13 +173,14 @@ export function tableAnchors(shape: Shape): TableAnchor[] {
   return anchors;
 }
 
-/** The box of a table, the widths of its columns, and when its cells change, its cells: what a change of the table sets on its shape. */
+/** The box of a table, the widths of its columns, the heights of its rows, and when its cells change, its cells: what a change of the table sets on its shape. */
 export interface TableChange {
   x: number;
   y: number;
   w: number;
   h: number;
   columns: number[];
+  rows: number[];
   cells: string[][];
   cellStyles: CellStyle[][];
 }
@@ -190,7 +198,7 @@ function growFromCorner(shape: Shape, dx: number, dy: number): Point {
  * removed are the last; the table widens or narrows by their width, its left side fixed.
  */
 export function setColumnCount(shape: Shape, count: number): TableChange {
-  const { cells, columns, cellStyles } = tableOf(shape);
+  const { cells, columns, rows, cellStyles } = tableOf(shape);
   const next = countWithin(count);
   const widths = columns.map((part) => part * shape.w);
   const average = shape.w / columns.length;
@@ -201,24 +209,29 @@ export function setColumnCount(shape: Shape, count: number): TableChange {
     w,
     h: shape.h,
     columns: kept.map((width) => width / w),
+    rows,
     cells: cells.map((row) => Array.from({ length: next }, (_, col) => row[col] ?? "")),
     cellStyles: cellStyles.map((row) => Array.from({ length: next }, (_, col) => ({ ...row[Math.min(col, row.length - 1)] }))),
   };
 }
 
 /**
- * The table with `count` rows. The rows added are empty and as high as the current ones, the rows removed are the last;
- * the table grows or shrinks by their height, its top side fixed.
+ * The table with `count` rows. The rows added are each as high as the average one and are empty, the rows removed are
+ * the last; the table grows or shrinks by their height, its top side fixed.
  */
 export function setRowCount(shape: Shape, count: number): TableChange {
-  const { cells, columns, cellStyles } = tableOf(shape);
+  const { cells, columns, rows, cellStyles } = tableOf(shape);
   const next = countWithin(count);
-  const h = (shape.h / cells.length) * next;
+  const heights = rows.map((part) => part * shape.h);
+  const average = shape.h / rows.length;
+  const kept = [...heights.slice(0, next), ...Array.from({ length: Math.max(0, next - heights.length) }, () => average)];
+  const h = kept.reduce((sum, height) => sum + height, 0);
   return {
     ...growFromCorner(shape, 0, h - shape.h),
     w: shape.w,
     h,
     columns,
+    rows: kept.map((height) => height / h),
     cells: Array.from({ length: next }, (_, row) => cells[row] ?? columns.map(() => "")),
     cellStyles: Array.from({ length: next }, (_, row) => cellStyles[Math.min(row, cellStyles.length - 1)].map((style) => ({ ...style }))),
   };
@@ -230,33 +243,47 @@ export function setRowCount(shape: Shape, count: number): TableChange {
  * same, its left side fixed. The last column's separator is the right side of the table.
  */
 export function dragSeparator(shape: Shape, index: number, dx: number): TableChange {
-  const { cells, columns, cellStyles } = tableOf(shape);
+  const { cells, columns, rows, cellStyles } = tableOf(shape);
   const widths = columns.map((part) => part * shape.w);
   const applied = Math.max(MIN_COLUMN, widths[index] + dx) - widths[index];
   widths[index] += applied;
   const w = shape.w + applied;
-  return { ...growFromCorner(shape, applied, 0), w, h: shape.h, columns: widths.map((width) => width / w), cells, cellStyles };
+  return { ...growFromCorner(shape, applied, 0), w, h: shape.h, columns: widths.map((width) => width / w), rows, cells, cellStyles };
+}
+
+/**
+ * The table whose separator after row `index` is dragged by `dy` along its own y axis (in the frame, not on the
+ * screen): only that row changes, by as much as the minimum height allows, and the table grows or shrinks by the same,
+ * its top side fixed. The last row's separator is the bottom side of the table.
+ */
+export function dragRowSeparator(shape: Shape, index: number, dy: number): TableChange {
+  const { cells, columns, rows, cellStyles } = tableOf(shape);
+  const heights = rows.map((part) => part * shape.h);
+  const applied = Math.max(MIN_ROW, heights[index] + dy) - heights[index];
+  heights[index] += applied;
+  const h = shape.h + applied;
+  return { ...growFromCorner(shape, 0, applied), w: shape.w, h, columns, rows: heights.map((height) => height / h), cells, cellStyles };
 }
 
 /** The smallest width of a table: its narrowest column at its minimum width. */
 const minWidth = (shape: Shape): number => MIN_COLUMN / Math.min(...tableOf(shape).columns);
-/** The smallest height of a table: all its rows at their minimum height. */
-const minHeight = (shape: Shape): number => tableOf(shape).cells.length * MIN_ROW;
+/** The smallest height of a table: its lowest row at its minimum height. */
+const minHeight = (shape: Shape): number => MIN_ROW / Math.min(...tableOf(shape).rows);
 
 /** What resizing sets on a table shape: its box, and its font size and the own font sizes of its cells when the resizing scales them. */
 export type TableResize = Omit<TableChange, "cells" | "cellStyles"> & { fontSize?: number; cellStyles?: CellStyle[][] };
 
 /** The box of a table `w` × `h`, whose side or corner of the signs (`sx`, `sy`) was dragged: the opposite one stays, or the center. */
 function resized(shape: Shape, w: number, h: number, sx: number, sy: number, fromCenter: boolean): Omit<TableResize, "fontSize" | "cellStyles"> {
-  const columns = tableOf(shape).columns;
-  if (fromCenter) return { x: shape.x, y: shape.y, w, h, columns };
+  const { columns, rows } = tableOf(shape);
+  if (fromCenter) return { x: shape.x, y: shape.y, w, h, columns, rows };
   const shift = rotate({ x: (sx * (w - shape.w)) / 2, y: (sy * (h - shape.h)) / 2 }, shape.rotation);
-  return { x: shape.x + shift.x, y: shape.y + shift.y, w, h, columns };
+  return { x: shape.x + shift.x, y: shape.y + shift.y, w, h, columns, rows };
 }
 
 /**
  * The table whose side is dragged by `delta` (on screen, in units of the drawing): the opposite side stays, or the
- * center in the fixed center mode. The font size is unchanged, and the columns keep their relative widths.
+ * center in the fixed center mode. The font size is unchanged, and the columns and rows keep their relative sizes.
  */
 export function resizeSide(shape: Shape, side: "n" | "e" | "s" | "w", delta: Point, { fromCenter = false } = {}): TableResize {
   const local = rotate(delta, -shape.rotation);

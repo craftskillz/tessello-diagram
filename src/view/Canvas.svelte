@@ -14,7 +14,7 @@
   import { captionOf } from "../lib/images.ts";
   import { outlineOf, paletteOf, pictureKeyOf, placeCustomShape } from "../lib/library.ts";
   import { creation, diagrams, followLink, goBack, images, insertImage, redo, requestImages, save, shapeLibraries, type Tool, ui, undo } from "../lib/store.svelte.ts";
-  import { type CellRange, cellAnchors, cellAt, cellBox, cellStyleOf, clipRange, columnEdges, columnRange, dragSeparator, rangeBetween, resizeCorner, resizeSide, rowRange, styleTable, tableOf } from "../lib/table.ts";
+  import { type CellRange, cellAnchors, cellAt, cellBox, cellStyleOf, clipRange, columnEdges, columnRange, dragRowSeparator, dragSeparator, rangeBetween, resizeCorner, resizeSide, rowEdges, rowRange, styleTable, tableOf } from "../lib/table.ts";
   import { canvasMeasure, LABEL_PAD, layoutLabel, LINE_HEIGHT } from "../lib/text.ts";
   import ArrowPanel from "./ArrowPanel.svelte";
   import ArrowView from "./ArrowView.svelte";
@@ -59,8 +59,8 @@
 
   /** Where a free arrow was when a move started: its ends and its waypoints. */
   type Line = { id: string; from: Point; to: Point; waypoints: Point[] };
-  /** What of a table is dragged: a side, a corner, or the separator after a column. */
-  type TablePart = { side: "n" | "e" | "s" | "w" } | { corner: Corner } | { column: number };
+  /** What of a table is dragged: a side, a corner, or the separator after a column or a row. */
+  type TablePart = { side: "n" | "e" | "s" | "w" } | { corner: Corner } | { column: number } | { row: number };
   type Gesture =
     | { kind: "pan"; from: Point; pan: Point }
     | { kind: "move"; id: string; from: Point; starts: (Box & { id: string })[]; lines: Line[]; moved: boolean }
@@ -484,7 +484,8 @@
       const change =
         "side" in part ? resizeSide(start, part.side, delta, options)
         : "corner" in part ? resizeCorner(start, part.corner, delta, options)
-        : dragSeparator(start, part.column, rotate(delta, -start.rotation).x);
+        : "column" in part ? dragSeparator(start, part.column, rotate(delta, -start.rotation).x)
+        : dragRowSeparator(start, part.row, rotate(delta, -start.rotation).y);
       Object.assign(shape, change);
       gesture.moved = true;
     } else if (gesture.kind === "resizeGroup") {
@@ -1235,11 +1236,25 @@
                 onpointerdown={(event) => startResizeTable(event, shape, { column: index })}
               />
             {/each}
+            {#each rowEdges(shape).slice(1, -1) as edge, index (index)}
+              <rect
+                role="button"
+                tabindex="-1"
+                aria-label={t("resize_row", { n: index + 1 })}
+                class="dg-separator dg-separator-row"
+                x={-shape.w / 2}
+                y={edge - 3 / zoom}
+                width={shape.w}
+                height={6 / zoom}
+                onpointerdown={(event) => startResizeTable(event, shape, { row: index })}
+              />
+            {/each}
           {/if}
           {#if shape.type === "table"}
             <!-- The bars that select a column (above the table) or a row (to its left), beyond the link handles. -->
             {@const { cells } = tableOf(shape)}
             {@const edges = columnEdges(shape)}
+            {@const tops = rowEdges(shape)}
             {@const thick = PICK_THICKNESS / zoom}
             {@const gap = PICK_GAP / zoom / 2}
             {#each edges.slice(1) as edge, col (col)}
@@ -1258,7 +1273,7 @@
               />
             {/each}
             {#each cells as _, row (row)}
-              {@const top = -shape.h / 2 + (row * shape.h) / cells.length + gap}
+              {@const top = tops[row] + gap}
               <rect
                 role="button"
                 tabindex="-1"
@@ -1267,7 +1282,7 @@
                 x={-shape.w / 2 - (PICK_OFFSET + PICK_THICKNESS / 2) / zoom}
                 y={top}
                 width={thick}
-                height={Math.max(0, shape.h / cells.length - 2 * gap)}
+                height={Math.max(0, tops[row + 1] - tops[row] - 2 * gap)}
                 stroke-width={1.5 / zoom}
                 onpointerdown={(event) => pickCells(event, shape, "row", row)}
               />
@@ -1504,6 +1519,9 @@
   .dg-separator {
     fill: transparent;
     cursor: col-resize;
+  }
+  .dg-separator-row {
+    cursor: row-resize;
   }
   .resize-ne,
   .resize-sw {

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { type Shape, newShape } from "../src/lib/diagram.ts";
-import { clipRange, MAX_CELLS, MIN_COLUMN, MIN_ROW, cellAt, cellBox, cellStyleOf, columnEdges, columnRange, dragSeparator, inRange, rangeBetween, resizeCorner, resizeSide, rowRange, setColumnCount, setRowCount, sharedCellStyle, styleCells, styleTable, tableAnchors, tableOf, wholeRange } from "../src/lib/table.ts";
+import { clipRange, MAX_CELLS, MIN_COLUMN, MIN_ROW, cellAt, cellBox, cellStyleOf, columnEdges, columnRange, dragRowSeparator, dragSeparator, inRange, rangeBetween, resizeCorner, resizeSide, rowEdges, rowRange, setColumnCount, setRowCount, sharedCellStyle, styleCells, styleTable, tableAnchors, tableOf, wholeRange } from "../src/lib/table.ts";
 
 /** A table of 240 × 90 centered on (100, 50): three columns of 60, 60 and 120, and three rows of 30. */
 function table(fields: Partial<Shape> = {}): Shape {
@@ -328,5 +328,105 @@ describe("the style of the cells of a table", () => {
     assert.deepEqual(clipRange(styled(), { top: 1, left: 1, bottom: 5, right: 9 }), { top: 1, left: 1, bottom: 1, right: 2 });
     assert.equal(clipRange(styled(), { top: 2, left: 0, bottom: 4, right: 0 }), undefined);
     assert.equal(clipRange(styled(), { top: 0, left: 3, bottom: 0, right: 3 }), undefined);
+  });
+});
+
+/** The same table whose rows are 15, 30 and 45 high. */
+const uneven = (fields: Partial<Shape> = {}): Shape => table({ rows: [1 / 6, 1 / 3, 1 / 2], ...fields });
+
+describe("a table whose rows have their own heights", () => {
+  test("the edges of the rows run from the top side of the table to its bottom side, in its frame", () => {
+    assert.deepEqual(rowEdges(table()), [-45, -15, 15, 45]);
+    near(rowEdges(uneven())[1], -30);
+    near(rowEdges(uneven())[2], 0);
+    assert.equal(rowEdges(uneven())[3], 45);
+  });
+
+  test("a table stored without heights, or with ones that do not fit its rows, has equal rows", () => {
+    assert.deepEqual(tableOf(table({ rows: undefined })).rows, [1 / 3, 1 / 3, 1 / 3]);
+    assert.deepEqual(tableOf(table({ rows: [0.5, 0.5] })).rows, [1 / 3, 1 / 3, 1 / 3]);
+  });
+
+  test("cells and points of the drawing follow the real heights", () => {
+    assert.deepEqual(cellBox(uneven(), 0, 0), { x: -90, y: -37.5, w: 60, h: 15 });
+    assert.deepEqual(cellBox(uneven(), 2, 2), { x: 60, y: 22.5, w: 120, h: 45 });
+    assert.deepEqual(cellAt(uneven(), { x: 100, y: 50 - 31 }), { row: 0, col: 1 });
+    assert.deepEqual(cellAt(uneven(), { x: 100, y: 50 - 29 }), { row: 1, col: 1 });
+    assert.deepEqual(cellAt(uneven(), { x: 100, y: 50 + 1 }), { row: 2, col: 1 });
+    assert.deepEqual(cellAt(uneven(), { x: 100, y: 50 + 44 }), { row: 2, col: 1 });
+  });
+
+  test("the anchors are parts of the height, from the rows as they are now", () => {
+    const anchors = tableAnchors(uneven());
+    const at = (id: string) => anchors.find((anchor) => anchor.id === id)!;
+    near(at("r0c0-N").y, 0);
+    near(at("r0c0-W").y, 1 / 12);
+    near(at("r1c0-W").y, 1 / 6 + 1 / 6);
+    near(at("r2c2-S").y, 1);
+    near(at("r2c0-W").y, 0.5 + 0.25);
+  });
+
+  test("a row added is as high as the average one, the heights of the others are kept, and the table grows with its top fixed", () => {
+    const next = setRowCount(uneven(), 4);
+    assert.deepEqual([next.x, next.y, next.w, next.h], [100, 50 + 15, 240, 120]);
+    assert.deepEqual(next.rows.map((part) => part * next.h), [15, 30, 45, 30]);
+  });
+
+  test("the rows removed are the last ones, and the heights of the others are kept", () => {
+    const next = setRowCount(uneven(), 2);
+    assert.deepEqual([next.y, next.h], [50 - 22.5, 45]);
+    near(next.rows[0] * next.h, 15);
+    near(next.rows[1] * next.h, 30);
+  });
+
+  test("changing the columns, or dragging their separators, keeps the rows", () => {
+    assert.deepEqual(setColumnCount(uneven(), 4).rows, uneven().rows);
+    assert.deepEqual(dragSeparator(uneven(), 0, 30).rows, uneven().rows);
+  });
+
+  test("a new table has three equal rows, and the count of rows follows the cells", () => {
+    assert.equal(setRowCount(table(), 5).rows.length, 5);
+    assert.equal(setRowCount(table(), 1).rows.length, 1);
+  });
+});
+
+describe("dragging the separator between two rows", () => {
+  test("changes the height of the row above it only, and the table follows with its top fixed", () => {
+    const next = dragRowSeparator(uneven(), 0, 10);
+    assert.deepEqual([next.x, next.y, next.w, next.h], [100, 55, 240, 100]);
+    assert.deepEqual(next.rows.map((part) => part * next.h), [25, 30, 45]);
+  });
+
+  test("narrows the row and the table when dragged back", () => {
+    const next = dragRowSeparator(uneven(), 2, -20);
+    assert.deepEqual([next.y, next.h], [40, 70]);
+    near(next.rows[2] * next.h, 25);
+    near(next.rows[1] * next.h, 30);
+  });
+
+  test("never leaves a row lower than the minimum", () => {
+    const next = dragRowSeparator(uneven(), 1, -100);
+    near(next.rows[1] * next.h, MIN_ROW);
+    near(next.h, 90 - (30 - MIN_ROW));
+    near(next.y, 50 - (30 - MIN_ROW) / 2);
+  });
+
+  test("moves the center along the local y axis of a turned table", () => {
+    const next = dragRowSeparator(table({ rotation: 90 }), 0, 30);
+    near(next.x, 100 - 15);
+    near(next.y, 50);
+  });
+});
+
+describe("resizing a table with rows of their own heights", () => {
+  test("keeps the proportions of the rows", () => {
+    assert.deepEqual(resizeSide(uneven(), "s", { x: 0, y: 30 }).rows, uneven().rows);
+    assert.deepEqual(resizeCorner(uneven(), "se", { x: 60, y: 0 }).rows, uneven().rows);
+    assert.deepEqual(resizeSide(uneven(), "e", { x: 40, y: 0 }, { fromCenter: true }).rows, uneven().rows);
+  });
+
+  test("stops where the lowest row reaches its minimum height", () => {
+    near(resizeSide(uneven({ rows: [0.1, 0.4, 0.5] }), "s", { x: 0, y: -500 }).h, MIN_ROW / 0.1);
+    near(resizeCorner(uneven({ rows: [0.1, 0.4, 0.5] }), "se", { x: -1000, y: -1000 }).h, MIN_ROW / 0.1);
   });
 });

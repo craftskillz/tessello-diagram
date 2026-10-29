@@ -167,6 +167,37 @@ test("drags a column separator: only that column changes and the table widens, e
   assert.equal(undone.w, after.w);
 });
 
+test("drags a row separator: only that row changes and the table grows, even turned", async () => {
+  const opened = await openView();
+  const { page, host } = opened;
+  const before = await selectedTable(opened);
+  const heights = before.rows!.map((part) => part * before.h);
+
+  const after = await changed(host, before, () => dragHandle(page, "Resize row 1", 0, 20));
+  const next = after.rows!.map((part) => part * after.h);
+  assert.ok(Math.abs(next[0] - (heights[0] + 20)) < 2);
+  assert.ok(Math.abs(next[1] - heights[1]) < 0.5 && Math.abs(next[2] - heights[2]) < 0.5);
+  assert.ok(Math.abs(after.h - (before.h + 20)) < 2);
+  assert.ok(Math.abs(after.y - after.h / 2 - (before.y - before.h / 2)) < 0.5, "the top side stays");
+  assert.equal(after.cells?.length, before.cells?.length);
+
+  // A click in the middle of the taller first row selects a cell of that row, not of the one below it.
+  await tool(page, "Select (S)");
+  const spot = await at(page, after.x, after.y - after.h / 2 + next[0] / 2);
+  await page.mouse.click(spot.x, spot.y);
+  await page.getByRole("button", { name: "Select row 1" }).waitFor();
+
+  // Turned by 30°, the table grows along its own axis: the drag follows that axis on the screen.
+  for (let turn = 0; turn < 3; turn++) await page.getByRole("button", { name: "Rotate right by 10°" }).click();
+  await until(async () => (await storedDiagram(host)).shapes[0].rotation === 30, "the rotation to be stored");
+  const angle = (30 * Math.PI) / 180;
+  const turned = await changed(host, after, () => dragHandle(page, "Resize row 2", -20 * Math.sin(angle), 20 * Math.cos(angle)));
+  assert.ok(Math.abs(turned.h - (after.h + 20)) < 3, `${after.h} became ${turned.h}`);
+
+  const undone = await changed(host, turned, () => page.keyboard.press("ControlOrMeta+z"));
+  assert.equal(undone.h, after.h);
+});
+
 type Opened = Awaited<ReturnType<typeof openView>>;
 type Table = Awaited<ReturnType<typeof selectedTable>>;
 
