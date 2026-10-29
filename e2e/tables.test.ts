@@ -49,7 +49,7 @@ test("creates a 3 × 3 table, writes its cells with Tab, wraps long text in a co
 
   await reload(page);
   await grid.waitFor();
-  assert.equal(await grid.locator("text:has-text('Role')").count(), 1);
+  assert.equal(await grid.locator("text:has-text('Role') tspan tspan").count(), 1);
   table = (await storedDiagram(host)).shapes[0];
   assert.equal(table.cells?.[0][0], "Name");
 
@@ -427,7 +427,7 @@ test("the style of a cell is drawn, undone, redone and kept after a reload", asy
   const grid = page.locator('[data-type="table"]');
   const shown = async () => ({
     fills: await grid.locator("[data-cell-fill]").evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-cell-fill"))),
-    weight: await grid.locator("text:has-text('Role')").evaluate((node) => getComputedStyle(node).fontWeight),
+    weight: await grid.locator("text:has-text('Role') tspan tspan").evaluate((node) => getComputedStyle(node).fontWeight),
   });
   assert.deepEqual((await shown()).fills, ["r0c1"]);
   assert.ok(Number((await shown()).weight) >= 600 || (await shown()).weight === "bold");

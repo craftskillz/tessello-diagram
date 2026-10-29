@@ -2,16 +2,19 @@
   // The style of the selected shapes: color, opacity of the fill, corner radius of the rectangles, text size, bold,
   // italic, underline and alignments, rotation of the shape and of its text, and order; their group, their lock, and the
   // copy of a style; the link of a single shape. A control applies to every selected shape, and a change is saved when
-  // it is made. On a table, the color, the text size, the bold, italic and underline and the alignments style the selected
-  // cells when there are some, else the whole table, which erases the own style of its cells. "Save as default for this
-  // shape type" makes the style of one built-in shape the default of its type. The panel is docked beside the canvas, so
-  // that it never hides the drawing.
+  // it is made. Bold, italic and underline act on the selected part of a text being edited (with none, on what is typed
+  // next), else on the whole text, which erases the styles of its parts. On a table, the color, the text size, the bold,
+  // italic and underline and the alignments style the selected cells when there are some, else the whole table, which
+  // erases the own style of its cells. "Save as default for this shape type" makes the style of one built-in shape the
+  // default of its type. The panel is docked beside the canvas, so that it never hides the drawing.
   import { isBuiltIn, shapeAsDefault } from "../lib/defaults.ts";
   import { type CellStyle, clampFontSize, COLORS, CORNER_RADIUS, FONT_SIZES, groupShapes, LABEL_PLACEMENTS, type LabelPlacement, reorder, type Shape, ungroupShapes } from "../lib/diagram.ts";
   import { degrees } from "../lib/geometry.ts";
+  import { type Emphasis, styleWhole, wholeStyle } from "../lib/richtext.ts";
   import { type CellRange, MAX_CELLS, setColumnCount, setRowCount, sharedCellStyle, styleCells, styleTable, tableOf, wholeRange } from "../lib/table.ts";
   import { t } from "../lib/i18n.ts";
   import { creation, diagrams, save, saveDefaults, ui } from "../lib/store.svelte.ts";
+  import type { TextSelection } from "./TextEditor.svelte";
   import LinkDialog from "./LinkDialog.svelte";
   import SelectionActions from "./SelectionActions.svelte";
 
@@ -22,7 +25,8 @@
     onCopyStyle,
     onPasteStyle,
     cells,
-  }: { cells?: CellRange; shapes: Shape[]; onEditText: (id: string) => void; onLock: () => void; onCopyStyle: () => void; onPasteStyle: () => void } = $props();
+    textEditor = null,
+  }: { cells?: CellRange; textEditor?: TextSelection | null; shapes: Shape[]; onEditText: (id: string) => void; onLock: () => void; onCopyStyle: () => void; onPasteStyle: () => void } = $props();
 
   /** Whether "Link on this shape" is open, for the one selected shape. */
   let linking = $state(false);
@@ -55,6 +59,23 @@
       return void save();
     }
     apply((shape) => Object.assign(shape, shape.type === "table" ? styleTable(shape, change) : change));
+  }
+
+  /** Whether a shape has an emphasis on all its text; a table, on all its cells. */
+  const emphasized = (shape: Shape, key: Emphasis) => (shape.type === "table" ? sharedCellStyle(shape, wholeRange(shape), key) === true : wholeStyle(shape, key) === true);
+
+  /** Whether the emphasis button is pressed: for the selection of the text editor while one is open, else for all the text of the selection. */
+  const emphasisPressed = (key: Emphasis) => (editor ? editor.styles[key] : cellRange ? styled(key) === true : shapes.every((shape) => emphasized(shape, key)));
+
+  /** The text editor of the one selected shape, when its text is being edited: the emphasis then acts on the selected part of it. */
+  const editor = $derived(textEditor && shapes.length === 1 && first.type !== "table" ? textEditor : undefined);
+
+  /** Flips an emphasis: on the selection of the text editor; on the selected cells; else on all the text of every selected shape, which erases the emphasis of its parts. */
+  function emphasize(key: Emphasis) {
+    if (editor) return editor.toggle(key);
+    if (cellRange) return style({ [key]: styled(key) !== true });
+    const value = !emphasisPressed(key);
+    apply((shape) => (shape.type === "table" ? Object.assign(shape, styleTable(shape, { [key]: value })) : styleWhole(shape, key, value)));
   }
 
   /** The value the selected shapes share, if they share one. */
@@ -187,10 +208,11 @@
       />
     </label>
 
-    <!-- Bold, italic and underline apply to the whole text of a shape, or of a cell. -->
+    <!-- Bold, italic and underline apply to the selected part of a text being edited; else to the whole text of a shape, or of a cell.
+         Pressing one does not take the focus, which the editor keeps. -->
     <div class="dg-group" role="group" aria-label={t("text_style")}>
       {#each EMPHASES as { key, label, glyph } (key)}
-        <button type="button" class="dg-btn dg-icon dg-emphasis dg-emphasis-{key}" aria-label={label()} title={label()} aria-pressed={styled(key) === true} onclick={() => style({ [key]: styled(key) !== true })}>{glyph}</button>
+        <button type="button" class="dg-btn dg-icon dg-emphasis dg-emphasis-{key}" aria-label={label()} title={label()} aria-pressed={emphasisPressed(key)} onmousedown={(event) => event.preventDefault()} onclick={() => emphasize(key)}>{glyph}</button>
       {/each}
     </div>
     {#if cellRange}

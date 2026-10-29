@@ -9,6 +9,7 @@
   import { createArrow, createShape } from "../lib/defaults.ts";
   import { type Arrow, type Diagram, keepsRatio, type ShapeLink, newId, nextZ, removeShape, type Shape, withGroups } from "../lib/diagram.ts";
   import { type Box, boxWithin, CONNECTION_DIRECTIONS, type ConnectionDirection, connectionHandlePoint, connectionPort, contains, type Corner, cornersOf, cornerSign, degrees, type Endpoint, isAttached, type Point, portPoint, portsOf, resizeBox, rotate, shapeAt } from "../lib/geometry.ts";
+  import type { TextRun } from "../lib/richtext.ts";
   import { t, titleOf } from "../lib/i18n.ts";
   import { alignment, type Bounds, boundsOf, fitView, GRID, type Guide, pointsBounds, scaleBoxes, snapToGrid } from "../lib/placement.ts";
   import { captionOf } from "../lib/images.ts";
@@ -21,6 +22,7 @@
   import { exportPng } from "./exports.ts";
   import ShapePanel from "./ShapePanel.svelte";
   import ShapeView from "./ShapeView.svelte";
+  import TextEditor, { type TextSelection } from "./TextEditor.svelte";
 
   let { diagram }: { diagram: Diagram } = $props();
 
@@ -710,7 +712,7 @@
   const TOOL_KEYS: Record<string, Tool> = { s: "select", r: "rect", e: "ellipse", d: "database", c: "circle", a: "actor", p: "postit", t: "text", f: "arrow", i: "image" };
 
   /** Whether the keys go to a text being edited, a field or a dialog, rather than to the canvas. */
-  const typing = (event: Event) => !!editing || !!(event.target as HTMLElement).closest("input, textarea, [role=dialog]");
+  const typing = (event: Event) => !!editing || !!(event.target as HTMLElement).closest("input, textarea, [contenteditable], [role=dialog]");
 
   function onKeyDown(event: KeyboardEvent) {
     if (typing(event)) return;
@@ -903,6 +905,20 @@
       event.preventDefault();
       editing = null;
     }
+  }
+
+  /** The selection of the editor of a shape's text, while there is one, for the panel. */
+  let textSelection = $state<TextSelection | null>(null);
+
+  /** Applies the text, and its runs, of the shape being edited: one undo step, none when nothing changed. */
+  function applyRichText({ text, textRuns }: { text: string; textRuns?: TextRun[] }) {
+    const shape = editedShape;
+    editing = null;
+    if (!shape || (shape.text === text && JSON.stringify(shape.textRuns) === JSON.stringify(textRuns))) return;
+    shape.text = text;
+    if (textRuns) shape.textRuns = textRuns;
+    else delete shape.textRuns;
+    void save();
   }
 
   const focus = (element: HTMLTextAreaElement) => {
@@ -1325,23 +1341,37 @@
     {@const box = editing.cell ? cellBox(editedShape, editing.cell.row, editing.cell.col) : { x: 0, y: 0, w: editedShape.w, h: editedShape.h }}
     <!-- A cell is edited in the font it shows: its own over that of the table; a shape, in its own. -->
     {@const font = editing.cell ? cellStyleOf(editedShape, editing.cell.row, editing.cell.col) : editedShape}
-    <textarea
-      class="dg-text-editor"
-      aria-label={editing.cell ? t("cell_label", { row: editing.cell.row + 1, col: editing.cell.col + 1 }) : t("text_label")}
-      style:left="{pan.x + (editedShape.x + box.x - box.w / 2) * zoom}px"
-      style:top="{pan.y + (editedShape.y + box.y - box.h / 2) * zoom}px"
-      style:width="{box.w * zoom}px"
-      style:height="{box.h * zoom}px"
-      style:font-size="{font.fontSize * zoom}px"
-      style:text-align={font.textAlign}
-      style:font-weight={font.bold ? "bold" : undefined}
-      style:font-style={font.italic ? "italic" : undefined}
-      style:text-decoration={font.underline ? "underline" : undefined}
-      bind:value={editing.text}
-      onkeydown={onTextKey}
-      onblur={applyText}
-      use:focus
-    ></textarea>
+    {#if editing.cell}
+      <textarea
+        class="dg-text-editor"
+        aria-label={t("cell_label", { row: editing.cell.row + 1, col: editing.cell.col + 1 })}
+        style:left="{pan.x + (editedShape.x + box.x - box.w / 2) * zoom}px"
+        style:top="{pan.y + (editedShape.y + box.y - box.h / 2) * zoom}px"
+        style:width="{box.w * zoom}px"
+        style:height="{box.h * zoom}px"
+        style:font-size="{font.fontSize * zoom}px"
+        style:text-align={font.textAlign}
+        style:font-weight={font.bold ? "bold" : undefined}
+        style:font-style={font.italic ? "italic" : undefined}
+        style:text-decoration={font.underline ? "underline" : undefined}
+        bind:value={editing.text}
+        onkeydown={onTextKey}
+        onblur={applyText}
+        use:focus
+      ></textarea>
+    {:else}
+      <TextEditor
+        shape={editedShape}
+        left={pan.x + (editedShape.x + box.x - box.w / 2) * zoom}
+        top={pan.y + (editedShape.y + box.y - box.h / 2) * zoom}
+        width={box.w * zoom}
+        height={box.h * zoom}
+        fontSize={font.fontSize * zoom}
+        onapply={applyRichText}
+        oncancel={() => (editing = null)}
+        bind:selection={textSelection}
+      />
+    {/if}
   {:else if editing && editedLabel}
     {@const { center, w, h, arrow } = editedLabel}
     {@const width = Math.max(w, 120) + LABEL_PAD * 2}
@@ -1406,7 +1436,7 @@
     {:else if selectedArrows.length && !selectedShapes.length}
       <ArrowPanel arrows={selectedArrows} onEditLabel={startEditingLabel} onLock={() => setLocked(true)} onCopyStyle={copySelectionStyle} onPasteStyle={pasteSelectionStyle} />
     {:else}
-      <ShapePanel shapes={selectedShapes} cells={cellSelection?.range} onEditText={(id) => startEditing(id)} onLock={() => setLocked(true)} onCopyStyle={copySelectionStyle} onPasteStyle={pasteSelectionStyle} />
+      <ShapePanel shapes={selectedShapes} textEditor={editedShape && !editing?.cell ? textSelection : null} cells={cellSelection?.range} onEditText={(id) => startEditing(id)} onLock={() => setLocked(true)} onCopyStyle={copySelectionStyle} onPasteStyle={pasteSelectionStyle} />
     {/if}
   </div>
 {/if}

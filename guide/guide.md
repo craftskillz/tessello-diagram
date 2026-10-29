@@ -42,7 +42,7 @@ On the Home, the Diagram Widget lists the four diagrams you changed last, with h
 Pick a tool at the top, or press its key:
 
 - **Select (S)**: click a shape or an arrow to select it, drag a shape to move it. **Ctrl+click** (**Cmd+click** on a Mac) adds a shape or an arrow to the selection or takes it out, **Ctrl+A** selects everything, and a drag on an empty spot selects what it surrounds entirely. **Delete** removes the selection: the arrows attached to a removed shape stay where they were, their ends left free. **Ctrl+Delete** (**Cmd+Delete**) also removes the arrows of the shape. **Escape** returns to this tool.
-- **Rectangle (R)**, **Ellipse (E)**, **Database (D)**, **Circle (C)**, **Actor (A)**, **Post-it (P)** and **Free text (T)**: double-click an empty spot to place the shape and type its text. **Enter** applies the text, **Shift+Enter** adds a line, **Escape** abandons it. The text wraps within the width of the shape. Double-click a shape, or click **Edit text**, to change its text.
+- **Rectangle (R)**, **Ellipse (E)**, **Database (D)**, **Circle (C)**, **Actor (A)**, **Post-it (P)** and **Free text (T)**: double-click an empty spot to place the shape and type its text. **Enter** applies the text, **Shift+Enter** adds a line, **Escape** abandons it. The text wraps within the width of the shape. Double-click a shape, or click **Edit text**, to change its text. While you type, select words and press **Ctrl+B**, **Ctrl+I** or **Ctrl+U** (**Cmd** on a Mac), or click **Bold**, **Italic** or **Underline** in the panel, to style only those words; with nothing selected, the style goes to what you type next. A paste brings in the text without its formatting.
 - **Table**: double-click an empty spot to place a table of 3 rows and 3 columns and type in its first cell. See "Tables" below.
 - **Arrow (F)**: press anywhere, drag and release. See below.
 - **Image (I)**: double-click an empty spot and choose a picture. See below.
@@ -97,7 +97,7 @@ Drag a corner of the selected shape to resize it. Hold **Shift** to keep its pro
 
 Drag the round handle above the shape to turn it (**Shift** turns by steps of 15°), or use the rotation buttons of the panel, by 10°. The handle marked **T** turns the text alone; a table has none, as its text always turns with it.
 
-The panel on the right styles every selected shape: its color, the opacity of its background, the **Corner radius** of a rectangle (from square corners, 0, up to half its smallest side; the radius is kept when the rectangle is resized), the size and alignment of its text, its **Bold**, **Italic** and **Underline** (each applies to the whole text, and they combine), and whether it is in front of or behind the others. It slides in from the right as soon as something is selected, and slides out when nothing is, leaving its room to the canvas.
+The panel on the right styles every selected shape: its color, the opacity of its background, the **Corner radius** of a rectangle (from square corners, 0, up to half its smallest side; the radius is kept when the rectangle is resized), the size and alignment of its text, its **Bold**, **Italic** and **Underline** (they combine; outside the editing of a text, each applies to the whole text, and is shown pressed only when the whole text has it), and whether it is in front of or behind the others. It slides in from the right as soon as something is selected, and slides out when nothing is, leaving its room to the canvas.
 
 Select a shape and click **Copy style** (**Ctrl+Alt+C**, **Cmd+Option+C** on a Mac) to copy its color, the opacity of its background, the corner radius of a rectangle (onto other rectangles), the size and alignment of its text, and whether it is bold, italic or underlined; tick **with size** to copy its width and height too. Then select other shapes and click **Paste style** (**Ctrl+Alt+V**, **Cmd+Option+V**). An arrow's style is copied the same way, onto other arrows: its arrowheads, its line, its width, its color, the size of its label and its route.
 
@@ -230,6 +230,7 @@ On a Mac, use **Cmd** for **Ctrl** and **Option** for **Alt**. The shortcuts do 
 | **Shift** while drawing an arrow | Keep it at a multiple of 45° |
 | **Shift** while resizing or turning | Keep the proportions, turn by steps of 15° |
 | **Enter**, **Shift+Enter**, **Escape** in a text | Apply it, add a line, abandon it |
+| **Ctrl+B**, **Ctrl+I**, **Ctrl+U** in the text of a shape | Bold, italic, underline on the selected words |
 
 ## When something goes wrong
 

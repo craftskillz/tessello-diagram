@@ -5,6 +5,7 @@
 
 import { endOf, layoutArrows, startOf } from "./arrows.ts";
 import { type Endpoint, isAttached, type Outlined, type Point } from "./geometry.ts";
+import { baseOf, EMPHASES, fromSpans, type SpanStyle, spansOf, type TextRun } from "./richtext.ts";
 
 export const SHAPE_TYPES = ["rect", "ellipse", "database", "circle", "actor", "postit", "text", "table", "image", "custom"] as const;
 export type ShapeType = (typeof SHAPE_TYPES)[number];
@@ -123,6 +124,11 @@ export interface Shape {
   bold?: boolean;
   italic?: boolean;
   underline?: boolean;
+  /**
+   * The ranges of `text` whose style differs from the shape's own (richtext.ts): sorted, without overlap, never empty;
+   * absent when the whole text has the style of the shape. The text of a table cell or of an arrow label has none.
+   */
+  textRuns?: TextRun[];
   /** A table: the style of each cell, by row then column, as many as `cells`; `{}` is a cell that follows the table. */
   cellStyles?: CellStyle[][];
 }
@@ -344,12 +350,14 @@ export function readDiagram(value: unknown, id: string): Diagram {
 function readShape(value: unknown): Shape | null {
   if (!isRecord(value) || !isText(value.id) || !isNumber(value.x) || !isNumber(value.y)) return null;
   const shape = newShape(value.id, { x: value.x, y: value.y }, numberOr(value.z, 0), oneOf(SHAPE_TYPES, value.type, "rect"));
+  const text = textOr(value.text, shape.text);
+  const own = baseOf(value);
   return {
     ...shape,
     w: positiveOr(value.w, shape.w),
     h: positiveOr(value.h, shape.h),
     rotation: numberOr(value.rotation, shape.rotation),
-    text: textOr(value.text, shape.text),
+    text,
     fontSize: isNumber(value.fontSize) ? clampFontSize(value.fontSize) : shape.fontSize,
     textAlign: oneOf(TEXT_ALIGNS, value.textAlign, shape.textAlign),
     textValign: oneOf(TEXT_VALIGNS, value.textValign, shape.textValign),
@@ -362,11 +370,30 @@ function readShape(value: unknown): Shape | null {
     ...(value.bold === true ? { bold: true } : {}),
     ...(value.italic === true ? { italic: true } : {}),
     ...(value.underline === true ? { underline: true } : {}),
+    ...readTextRuns(value.textRuns, text, own),
     ...(shape.type === "rect" ? { cornerRadius: isNumber(value.cornerRadius) && value.cornerRadius >= 0 ? value.cornerRadius : CORNER_RADIUS } : {}),
     ...(shape.type === "image" && isText(value.imageKey) ? { imageKey: value.imageKey } : {}),
     ...(shape.type === "custom" ? readCustom(value) : {}),
     ...(shape.type === "table" ? readTable(value) : {}),
   };
+}
+
+/**
+ * The text runs of a shape, if any: the records with an integer range and at least one boolean style, clamped into the
+ * text, then normalized (sorted, overlaps resolved with the later run winning, runs that repeat the shape's own style dropped).
+ */
+function readTextRuns(value: unknown, text: string, own: SpanStyle): Pick<Shape, "textRuns"> {
+  const runs: TextRun[] = [];
+  for (const item of Array.isArray(value) ? value : []) {
+    if (!isRecord(item) || !Number.isInteger(item.start) || !Number.isInteger(item.end)) continue;
+    const start = Math.max(0, item.start as number);
+    const end = Math.min(text.length, item.end as number);
+    const styles = EMPHASES.filter((key) => typeof item[key] === "boolean");
+    if (start >= end || styles.length === 0) continue;
+    runs.push({ start, end, ...Object.fromEntries(styles.map((key) => [key, item[key]])) });
+  }
+  const { textRuns } = fromSpans(spansOf({ text, textRuns: runs, ...own }), own);
+  return textRuns ? { textRuns } : {};
 }
 
 /**

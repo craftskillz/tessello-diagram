@@ -9,6 +9,7 @@
   import { cornerRadiusOf, lidOf } from "../lib/geometry.ts";
   import { t } from "../lib/i18n.ts";
   import { type CellRange, cellBox, cellStyleOf, columnEdges, inRange, rowEdges, tableOf } from "../lib/table.ts";
+  import type { Span } from "../lib/richtext.ts";
   import { layoutCell, layoutText, type Measure } from "../lib/text.ts";
 
   let {
@@ -150,28 +151,27 @@
       <path d="M-3.5 1.5l-1 1a2.1 2.1 0 0 0 3 3l1.5-1.5M3.5-1.5l1-1a2.1 2.1 0 0 0-3-3L0-4M-2 2l4-4" />
     </g>
   {/if}
+  <!-- The spans of a line, each in its own bold, italic and underline. -->
+  {#snippet spans(line: Span[])}{#each line as span}<tspan font-weight={span.bold ? "bold" : undefined} font-style={span.italic ? "italic" : undefined} text-decoration={span.underline ? "underline" : undefined}>{span.text}</tspan>{/each}{/snippet}
   {#if grid}
     {#each grid.cells as { row, col, style, layout } (`${row}/${col}`)}
       {#if layout && !(editingCell?.row === row && editingCell?.col === col)}
         <text
           class={style.color}
           font-size={style.fontSize}
-          font-weight={style.bold ? "bold" : undefined}
-          font-style={style.italic ? "italic" : undefined}
-          text-decoration={style.underline ? "underline" : undefined}
           text-anchor={layout.anchor}
           dominant-baseline="central"
         >
           {#each layout.lines as line, index}
-            <tspan x={layout.x} y={layout.y + index * layout.lineHeight}>{line}</tspan>
+            <tspan x={layout.x} y={layout.y + index * layout.lineHeight}>{@render spans(line)}</tspan>
           {/each}
         </text>
       {/if}
     {/each}
   {:else if !editing && shape.text}
-    <text font-size={shape.fontSize} font-weight={shape.bold ? "bold" : undefined} font-style={shape.italic ? "italic" : undefined} text-decoration={shape.underline ? "underline" : undefined} text-anchor={text.anchor} dominant-baseline="central" transform="rotate({shape.textRotation})">
+    <text font-size={shape.fontSize} text-anchor={text.anchor} dominant-baseline="central" transform="rotate({shape.textRotation})">
       {#each text.lines as line, index}
-        <tspan x={text.x} y={text.y + index * text.lineHeight}>{line}</tspan>
+        <tspan x={text.x} y={text.y + index * text.lineHeight}>{@render spans(line)}</tspan>
       {/each}
     </text>
   {/if}

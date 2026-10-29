@@ -327,6 +327,20 @@ describe("converting a diagram to draw.io", () => {
     assert.deepEqual([fontStyle("a"), fontStyle("b"), fontStyle("c"), fontStyle("t")], ["5", "2", undefined, undefined]);
   });
 
+  test("a shape with styled parts writes its text as HTML tags of the resolved styles, and no font style", () => {
+    const diagram = newDiagram("d1", "Runs", 0);
+    diagram.shapes = [
+      { ...newShape("a", { x: 0, y: 0 }, 0), text: "a<b\ncd", bold: true, textRuns: [{ start: 0, end: 1, bold: false, italic: true }, { start: 4, end: 5, underline: true }] },
+      { ...newShape("b", { x: 200, y: 0 }, 1), text: "plain & <ok>\nx", italic: true },
+    ];
+    const { xml } = convert(diagram);
+    assert.equal(cellOf(xml, "a").attributes.value, "&lt;i&gt;a&lt;/i&gt;&lt;b&gt;&amp;lt;b&lt;br&gt;&lt;/b&gt;&lt;b&gt;&lt;u&gt;c&lt;/u&gt;&lt;/b&gt;&lt;b&gt;d&lt;/b&gt;");
+    assert.equal(parseStyle(cellOf(xml, "a").attributes.style).fontStyle, undefined);
+    // The value is shown escaped as an attribute. Without runs, as before: escaped text and the font style.
+    assert.equal(cellOf(xml, "b").attributes.value, "plain &amp;amp; &amp;lt;ok&amp;gt;&lt;br&gt;x");
+    assert.equal(parseStyle(cellOf(xml, "b").attributes.style).fontStyle, "2");
+  });
+
   test("a grouped table is placed within its group, and an arrow attached to a table keeps it and its ports", () => {
     const diagram = newDiagram("d1", "Tables", 0);
     diagram.shapes = [

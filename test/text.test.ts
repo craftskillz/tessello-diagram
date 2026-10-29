@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { newShape } from "../src/lib/diagram.ts";
+import type { Span } from "../src/lib/richtext.ts";
 import { layoutCell, layoutText, wrap } from "../src/lib/text.ts";
+
+/** The lines of a layout as plain strings. */
+const plain = (lines: Span[][]) => lines.map((line) => line.map((span) => span.text).join(""));
+/** The lines as `text` with `*` around bold spans, `_` around italic ones. */
+const marked = (lines: Span[][]) => lines.map((line) => line.map((s) => (s.bold ? `*${s.text}*` : s.italic ? `_${s.text}_` : s.text)).join(""));
 
 // Each character is as wide as the font size.
 const measure = (text: string, fontSize: number) => text.length * fontSize;
@@ -27,12 +33,32 @@ describe("the text of a styled shape", () => {
   const rect = { ...newShape("r", { x: 0, y: 0 }, 0), w: 100, h: 40, fontSize: 10, text: "abc def" };
 
   test("wraps in its own bold font", () => {
-    assert.deepEqual(layoutText(rect, boldMeasure).lines, ["abc def"]);
-    assert.deepEqual(layoutText({ ...rect, bold: true }, boldMeasure).lines, ["abc", "def"]);
+    assert.deepEqual(plain(layoutText(rect, boldMeasure).lines), ["abc def"]);
+    assert.deepEqual(plain(layoutText({ ...rect, bold: true }, boldMeasure).lines), ["abc", "def"]);
   });
 
-  test("wraps in the font it is given over its own", () => {
-    assert.deepEqual(layoutText({ ...rect, bold: true }, boldMeasure, {}).lines, ["abc def"]);
+  test("wraps where the real widths of its spans say", () => {
+    // "abc" is bold (60) and "def" regular (30): "abc def" is 60 + 10 + 30 = 100, over 84; "de fg" fits.
+    const mixed = { ...rect, text: "abc def", textRuns: [{ start: 0, end: 3, bold: true }] };
+    assert.deepEqual(marked(layoutText(mixed, boldMeasure).lines), ["*abc*", "def"]);
+    assert.deepEqual(marked(layoutText({ ...mixed, text: "ab def", textRuns: [{ start: 0, end: 2, bold: true }] }, boldMeasure).lines), ["*ab* def"]);
+  });
+
+  test("keeps a word made of two styles whole", () => {
+    const word = { ...rect, text: "Hello big", textRuns: [{ start: 0, end: 3, bold: true }] };
+    assert.deepEqual(marked(layoutText({ ...word, w: 50 }, boldMeasure).lines), ["*Hel*lo", "big"]);
+  });
+
+  test("keeps its spans through line breaks and outside placements", () => {
+    const two = { ...rect, text: "ab\ncd", textRuns: [{ start: 1, end: 4, italic: true }] };
+    assert.deepEqual(marked(layoutText(two, measure).lines), ["a_b_", "_c_d"]);
+    assert.deepEqual(marked(layoutText({ ...two, type: "actor" }, measure).lines), ["a_b_", "_c_d"]);
+    assert.deepEqual(marked(layoutText({ ...two, type: "custom", labelPlacement: "left" }, measure).lines), ["a_b_", "_c_d"]);
+  });
+
+  test("has an empty line for an empty paragraph, and a single-style span for a shape without runs", () => {
+    const layout = layoutText({ ...rect, text: "a\n\nb", bold: true }, measure);
+    assert.deepEqual(layout.lines, [[{ text: "a", bold: true, italic: false, underline: false }], [], [{ text: "b", bold: true, italic: false, underline: false }]]);
   });
 });
 
@@ -44,7 +70,7 @@ describe("the text of a table cell", () => {
   test("wraps within the width of its column and is placed from the center of the cell, in the frame of the table", () => {
     // The cell is 60 wide with 8 on each side: 44 holds 4 characters of 10; "edge" and "cache" are two lines.
     const layout = layoutCell(table, 0, 1, measure);
-    assert.deepEqual(layout.lines, ["edge", "cache"]);
+    assert.deepEqual(plain(layout.lines), ["edge", "cache"]);
     assert.equal(layout.anchor, "middle");
     assert.equal(layout.x, -30);
     near(layout.y, -30 - layout.lineHeight / 2);
@@ -60,21 +86,21 @@ describe("the text of a table cell", () => {
     const cells = [["", "ab c", "ab c"], ["", "", ""], ["", "", ""]];
     const styled = { ...table, cells, cellStyles: [[{}, { fontSize: 20 }, {}], [], []] };
     const big = layoutCell(styled, 0, 1, measure);
-    assert.deepEqual(big.lines, ["ab", "c"]);
+    assert.deepEqual(plain(big.lines), ["ab", "c"]);
     assert.equal(big.lineHeight, 20 * 1.3);
-    const plain = layoutCell(styled, 0, 2, measure);
-    assert.deepEqual(plain.lines, ["ab c"]);
-    assert.equal(plain.lineHeight, 10 * 1.3);
+    const regular = layoutCell(styled, 0, 2, measure);
+    assert.deepEqual(plain(regular.lines), ["ab c"]);
+    assert.equal(regular.lineHeight, 10 * 1.3);
   });
 
   test("is measured in bold when its own font is bold", () => {
     // Bold characters are twice as wide: 44 holds 2 bold characters of 10.
     const boldMeasure = (text: string, fontSize: number, font?: { bold?: boolean }) => text.length * fontSize * (font?.bold ? 2 : 1);
     const styled = { ...table, cells: [["", "abcd", "abcd"], ["", "", ""], ["", "", ""]], cellStyles: [[{}, { bold: true }, {}], [], []] };
-    assert.deepEqual(layoutCell(styled, 0, 1, boldMeasure).lines, ["abcd"]);
+    assert.deepEqual(plain(layoutCell(styled, 0, 1, boldMeasure).lines), ["abcd"]);
     const words = { ...styled, cells: [["", "ab c", "ab c"], ["", "", ""], ["", "", ""]] };
-    assert.deepEqual(layoutCell(words, 0, 1, boldMeasure).lines, ["ab", "c"]);
-    assert.deepEqual(layoutCell(words, 0, 2, boldMeasure).lines, ["ab c"]);
+    assert.deepEqual(plain(layoutCell(words, 0, 1, boldMeasure).lines), ["ab", "c"]);
+    assert.deepEqual(plain(layoutCell(words, 0, 2, boldMeasure).lines), ["ab c"]);
   });
 
   test("is placed by its own alignments, as the text of a rectangle of the cell", () => {

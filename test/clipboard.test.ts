@@ -152,6 +152,13 @@ describe("copying a style", () => {
     assert.deepEqual([text.bold, text.italic, text.underline], [false, false, false]);
   });
 
+  test("pasting a style on the whole text erases the overrides of the runs for bold, italic and underline", () => {
+    const target = { ...newShape("t", { x: 0, y: 0 }, 0), text: "Hello world", textRuns: [{ start: 0, end: 5, bold: true, italic: true }, { start: 6, end: 11, underline: true }] };
+    applyStyle(copyStyle({ ...newShape("r", { x: 0, y: 200 }, 1), underline: true }, false), [target], []);
+    assert.deepEqual([target.bold, target.italic, target.underline], [false, false, true]);
+    assert.equal("textRuns" in target, false);
+  });
+
   test("applies only to what is of the same kind", () => {
     const arrowStyle = copyStyle({ ...newArrow("a", { x: 0, y: 0 }, { x: 10, y: 0 }, 0), color: "c-red" }, false);
     const shape = newShape("s", { x: 0, y: 0 }, 0);
@@ -228,5 +235,17 @@ describe("the system clipboard", () => {
     assert.equal(imageToPaste({ types: ["Files"], files: [{ type: "text/plain" } as File] }), undefined);
     assert.equal(imageToPaste(null), undefined);
     assert.equal(imageToPaste(undefined), undefined);
+  });
+});
+
+describe("the text runs of a copied shape", () => {
+  test("travel with a pasted shape, which does not share them with the original", () => {
+    const diagram = newDiagram("d1", "Runs", 0);
+    diagram.shapes = [{ ...newShape("s", { x: 0, y: 0 }, 0), text: "Hello", textRuns: [{ start: 0, end: 2, bold: true }] }];
+    const [id] = pasteItems(diagram, copyItems(diagram, ["s"]), 20, ids);
+    const pasted = diagram.shapes.find((shape) => shape.id === id)!;
+    assert.deepEqual(pasted.textRuns, [{ start: 0, end: 2, bold: true }]);
+    pasted.textRuns![0].end = 4;
+    assert.equal(diagram.shapes[0].textRuns![0].end, 2);
   });
 });

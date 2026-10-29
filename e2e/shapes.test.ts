@@ -2,6 +2,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { until } from "@tessello/sdk/testing";
 import { addRectangle, addShape, arrowEnds, at, canvas, drag, dragHandle, middleOf, near, newDiagram, openView, reload, saved, storedDiagram, tool, useBrowser } from "./diagram.ts";
 
 useBrowser();
@@ -141,7 +142,7 @@ test("bold, italic and underline style the whole text of any shape: drawn, edite
   await addRectangle(opened, -150, 0, "Role");
   await addShape(opened, "Free text (T)", 150, 0, "Note");
   const emphases = ["Bold", "Italic", "Underline"] as const;
-  const shown = (text: string) => page.locator(`text:has-text('${text}')`).first().evaluate((node) => {
+  const shown = (text: string) => page.locator(`text:has-text('${text}') tspan tspan`).first().evaluate((node) => {
     const { fontWeight, fontStyle, textDecorationLine } = getComputedStyle(node);
     return { bold: Number(fontWeight) >= 600 || fontWeight === "bold", italic: fontStyle === "italic", underline: textDecorationLine.includes("underline") };
   });
@@ -179,4 +180,168 @@ test("bold, italic and underline style the whole text of any shape: drawn, edite
   assert.deepEqual(kept.map((shape) => [shape.bold, shape.italic, shape.underline]), [[true, true, true], [true, true, true]]);
   assert.deepEqual(await shown("Role"), all);
   assert.deepEqual(await shown("Note"), all);
+});
+
+// The rich text of a shape: a part of its text styled in the editor, from the keyboard or the panel.
+
+/** The spans of the editor, each with its text and the styles it shows. */
+const editorSpans = (editor: import("playwright").Locator) =>
+  editor.evaluate((node) =>
+    [...node.querySelectorAll("span")].map((span) => {
+      const { fontWeight, fontStyle, textDecorationLine } = getComputedStyle(span);
+      return { text: span.textContent, bold: Number(fontWeight) >= 600, italic: fontStyle === "italic", underline: textDecorationLine.includes("underline") };
+    }),
+  );
+
+/** The pieces of the drawn text of a shape that are nested in a line and carry the given attribute, as their text. */
+const drawn = (page: import("playwright").Page, attribute: string) =>
+  page.locator("text tspan tspan").evaluateAll((nodes, attribute) => nodes.filter((node) => node.hasAttribute(attribute)).map((node) => node.textContent), attribute);
+
+test("a part of the text of a shape is made bold with Ctrl/Cmd+B in the editor: drawn, applied by Enter, undone and redone in one step and kept after a reload", async () => {
+  const opened = await openView();
+  const { page, host } = opened;
+  await newDiagram(opened, "Rich");
+  await addRectangle(opened, 0, 0, "alpha beta");
+
+  await page.getByRole("img", { name: "Rectangle alpha beta", exact: true }).dblclick();
+  const editor = page.getByRole("textbox", { name: "Text of the shape" });
+  await page.keyboard.press("End");
+  for (let key = 0; key < 4; key++) await page.keyboard.press("Shift+ArrowLeft");
+  await page.keyboard.press("ControlOrMeta+b");
+  assert.deepEqual(await editorSpans(editor), [
+    { text: "alpha ", bold: false, italic: false, underline: false },
+    { text: "beta", bold: true, italic: false, underline: false },
+  ]);
+
+  await saved(host, () => page.keyboard.press("Enter"));
+  await editor.waitFor({ state: "detached" });
+  assert.deepEqual(await drawn(page, "font-weight"), ["beta"]);
+  assert.deepEqual((await storedDiagram(host)).shapes[0].textRuns, [{ start: 6, end: 10, bold: true }]);
+
+  await saved(host, () => page.keyboard.press("ControlOrMeta+z"));
+  assert.deepEqual(await drawn(page, "font-weight"), []);
+  assert.equal((await storedDiagram(host)).shapes[0].textRuns, undefined);
+  await saved(host, () => page.keyboard.press("ControlOrMeta+Shift+z"));
+  assert.deepEqual(await drawn(page, "font-weight"), ["beta"]);
+
+  await reload(page);
+  await page.getByRole("img", { name: "Rectangle alpha beta", exact: true }).waitFor();
+  assert.deepEqual(await drawn(page, "font-weight"), ["beta"]);
+  assert.deepEqual((await storedDiagram(host)).shapes[0].textRuns, [{ start: 6, end: 10, bold: true }]);
+});
+
+test("Ctrl/Cmd+Z undoes the typing and the styles within the editor, a word at a time, and Ctrl/Cmd+Shift+Z redoes them", async () => {
+  const opened = await openView();
+  const { page, host } = opened;
+  await newDiagram(opened, "Undo rich");
+  await addRectangle(opened, 0, 0, "alpha beta");
+
+  await page.getByRole("img", { name: "Rectangle alpha beta", exact: true }).dblclick();
+  const editor = page.getByRole("textbox", { name: "Text of the shape" });
+  const text = () => editor.evaluate((node) => node.textContent);
+  await page.keyboard.press("End");
+  await page.keyboard.type(" gamma");
+  for (let key = 0; key < 5; key++) await page.keyboard.press("Shift+ArrowLeft");
+  await page.keyboard.press("ControlOrMeta+b");
+  assert.deepEqual((await editorSpans(editor)).map(({ text, bold }) => [text, bold]), [["alpha beta ", false], ["gamma", true]]);
+
+  await page.keyboard.press("ControlOrMeta+z");
+  assert.deepEqual((await editorSpans(editor)).map(({ text, bold }) => [text, bold]), [["alpha beta gamma", false]]);
+  await page.keyboard.press("ControlOrMeta+z");
+  assert.equal(await text(), "alpha beta ");
+  await page.keyboard.press("ControlOrMeta+z");
+  assert.equal(await text(), "alpha beta");
+  await page.keyboard.press("ControlOrMeta+Shift+z");
+  assert.equal(await text(), "alpha beta ");
+  // The editor stays open: the undo of the diagram is not reached.
+  assert.ok(await editor.evaluate((node) => node === document.activeElement));
+
+  await saved(host, () => page.keyboard.press("Enter"));
+  assert.equal((await storedDiagram(host)).shapes[0].text, "alpha beta ");
+});
+
+test("the panel styles the selected part of the text being edited, shows the state of the selection, and a style set at a caret goes to what is typed next", async () => {
+  const opened = await openView();
+  const { page, host } = opened;
+  await newDiagram(opened, "Panel rich");
+  await addRectangle(opened, 0, 0, "alpha beta");
+
+  await page.getByRole("img", { name: "Rectangle alpha beta", exact: true }).dblclick();
+  const editor = page.getByRole("textbox", { name: "Text of the shape" });
+  const italic = page.getByRole("button", { name: "Italic", exact: true });
+  await page.keyboard.press("End");
+  for (let key = 0; key < 4; key++) await page.keyboard.press("Shift+ArrowLeft");
+  assert.equal(await italic.getAttribute("aria-pressed"), "false");
+  await italic.click();
+  // The editor stays open and keeps the focus, and the button shows the state of the selection.
+  assert.ok(await editor.evaluate((node) => node === document.activeElement));
+  assert.equal(await italic.getAttribute("aria-pressed"), "true");
+  assert.deepEqual((await editorSpans(editor)).map(({ text, italic }) => [text, italic]), [["alpha ", false], ["beta", true]]);
+  await page.keyboard.press("Home");
+  await until(async () => (await italic.getAttribute("aria-pressed")) === "false", "the button to show the caret in an unstyled word");
+
+  // A caret at the end, underline: only the next character is underlined.
+  await page.keyboard.press("End");
+  await page.keyboard.press("ControlOrMeta+u");
+  const underline = page.getByRole("button", { name: "Underline", exact: true });
+  await until(async () => (await underline.getAttribute("aria-pressed")) === "true", "the button to show the pending underline");
+  await page.keyboard.type("x");
+  assert.deepEqual((await editorSpans(editor)).map(({ text, underline }) => [text, underline]), [["alpha ", false], ["beta", false], ["x", true]]);
+  await page.keyboard.type("y");
+  await saved(host, () => page.keyboard.press("Enter"));
+  // What is typed after the italic word keeps its italic, as in a word processor, and gains the underline.
+  assert.deepEqual((await storedDiagram(host)).shapes[0].textRuns, [{ start: 6, end: 10, italic: true }, { start: 10, end: 12, italic: true, underline: true }]);
+});
+
+test("Shift+Enter adds a line to the text of a shape and a paste inserts plain text only", async () => {
+  const opened = await openView();
+  const { page, host } = opened;
+  await newDiagram(opened, "Lines");
+  await addRectangle(opened, 0, 0, "one");
+
+  await page.getByRole("img", { name: "Rectangle one", exact: true }).dblclick();
+  const editor = page.getByRole("textbox", { name: "Text of the shape" });
+  await page.keyboard.press("End");
+  await page.keyboard.press("Shift+Enter");
+  await page.keyboard.type("two");
+  await editor.evaluate((node) => {
+    const data = new DataTransfer();
+    data.setData("text/plain", "!");
+    data.setData("text/html", "<b>bold</b>");
+    node.dispatchEvent(new InputEvent("beforeinput", { inputType: "insertFromPaste", dataTransfer: data, bubbles: true, cancelable: true }));
+  });
+  await saved(host, () => page.keyboard.press("Enter"));
+  const [shape] = (await storedDiagram(host)).shapes;
+  assert.equal(shape.text, "one\ntwo!");
+  assert.equal(shape.textRuns, undefined);
+});
+
+test("outside editing, the emphasis buttons act on the whole text and erase the styles of its parts", async () => {
+  const opened = await openView();
+  const { page, host } = opened;
+  await newDiagram(opened, "Whole");
+  await addRectangle(opened, 0, 0, "alpha beta");
+
+  await page.getByRole("img", { name: "Rectangle alpha beta", exact: true }).dblclick();
+  await page.keyboard.press("End");
+  for (let key = 0; key < 4; key++) await page.keyboard.press("Shift+ArrowLeft");
+  await page.keyboard.press("ControlOrMeta+b");
+  await page.keyboard.press("ControlOrMeta+i");
+  await saved(host, () => page.keyboard.press("Enter"));
+
+  const bold = page.getByRole("button", { name: "Bold", exact: true });
+  assert.equal(await bold.getAttribute("aria-pressed"), "false");
+  await saved(host, () => bold.click());
+  assert.equal(await bold.getAttribute("aria-pressed"), "true");
+  let [shape] = (await storedDiagram(host)).shapes;
+  assert.equal(shape.bold, true);
+  assert.deepEqual(shape.textRuns, [{ start: 6, end: 10, italic: true }]);
+  assert.deepEqual(await drawn(page, "font-weight"), ["alpha ", "beta"]);
+
+  await saved(host, () => bold.click());
+  assert.equal(await bold.getAttribute("aria-pressed"), "false");
+  [shape] = (await storedDiagram(host)).shapes;
+  assert.ok(!shape.bold);
+  assert.deepEqual(shape.textRuns, [{ start: 6, end: 10, italic: true }]);
+  assert.deepEqual(await drawn(page, "font-weight"), []);
 });

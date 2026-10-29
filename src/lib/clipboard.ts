@@ -4,6 +4,7 @@
 
 import { type Arrow, type Diagram, newId, nextZ, type Shape } from "./diagram.ts";
 import { type Endpoint, isAttached } from "./geometry.ts";
+import { EMPHASES, styleWhole } from "./richtext.ts";
 
 /** What Ctrl/Cmd+C copied: shapes, and the arrows whose two ends are within them. */
 export interface Clip {
@@ -115,6 +116,8 @@ export function applyStyle(style: Style, shapes: readonly Shape[], arrows: reado
   const { cornerRadius, ...values } = style.values;
   for (const shape of shapes) {
     Object.assign(shape, values);
+    // The style goes to the whole text: the runs no longer override it.
+    for (const key of EMPHASES) if (typeof values[key] === "boolean") styleWhole(shape, key, values[key]);
     if (shape.type === "rect" && cornerRadius !== undefined) shape.cornerRadius = cornerRadius;
   }
 }

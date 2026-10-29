@@ -2,6 +2,7 @@
 // are placed by its alignments. SVG does not wrap text, so the width of a line is measured in the font of the View.
 
 import type { Shape } from "./diagram.ts";
+import { sameStyle, type Span, spansOf } from "./richtext.ts";
 import { cellBox, cellStyleOf, tableOf } from "./table.ts";
 
 /** The space between the text and the box of its shape. */
@@ -33,8 +34,67 @@ export function wrap(text: string, width: number, fontSize: number, measure: Mea
   });
 }
 
+/** A word of a paragraph: its spans, and the space before it (absent for the first word). */
+interface Word {
+  pieces: Span[];
+  gap?: Span;
+}
+
+const measureSpans = (spans: readonly Span[], fontSize: number, measure: Measure) =>
+  spans.reduce((sum, { text, bold, italic }) => sum + (text ? measure(text, fontSize, { bold, italic }) : 0), 0);
+
+/** Appends a span to a line, merging it into the last when they have the same style. */
+function append(line: Span[], span: Span): void {
+  const last = line[line.length - 1];
+  if (last && sameStyle(last, span)) last.text += span.text;
+  else line.push({ ...span });
+}
+
+/** The spans of a text cut into its paragraphs, at the "\n" between them; an empty paragraph has no spans. */
+function paragraphsOf(spans: readonly Span[]): Span[][] {
+  const paragraphs: Span[][] = [[]];
+  for (const span of spans) {
+    span.text.split("\n").forEach((part, index) => {
+      if (index > 0) paragraphs.push([]);
+      if (part) append(paragraphs[paragraphs.length - 1], { ...span, text: part });
+    });
+  }
+  return paragraphs;
+}
+
+/** The words of a paragraph, split at each space as `wrap` does; a word keeps all the spans it is made of. */
+function wordsOf(paragraph: readonly Span[]): Word[] {
+  const words: Word[] = [{ pieces: [] }];
+  for (const span of paragraph) {
+    span.text.split(" ").forEach((part, index) => {
+      if (index > 0) words.push({ pieces: [], gap: { ...span, text: " " } });
+      if (part) words[words.length - 1].pieces.push({ ...span, text: part });
+    });
+  }
+  return words;
+}
+
+/** The lines of styled text whose lines wrap between words within `width`, each span measured in its own font; the rules of `wrap`. */
+function wrapSpans(spans: readonly Span[], width: number, fontSize: number, measure: Measure): Span[][] {
+  return paragraphsOf(spans).flatMap((paragraph) => {
+    const lines: Span[][] = [];
+    let line: Span[] = [];
+    for (const word of wordsOf(paragraph)) {
+      const longer: Span[] = [];
+      for (const span of [...line, ...(line.length && word.gap ? [word.gap] : []), ...word.pieces]) append(longer, span);
+      if (line.length && measureSpans(longer, fontSize, measure) > width) {
+        lines.push(line);
+        line = [];
+        for (const span of word.pieces) append(line, span);
+      } else line = longer;
+    }
+    return [...lines, line];
+  });
+}
+
 export interface TextLayout {
-  lines: string[];
+  /** The lines, each as its spans with their resolved style; an empty line has no spans. */
+  lines: Span[][];
   /** Where the lines start, in the frame of the shape: `x` by `anchor`, `y` the middle of the first line. */
   x: number;
   y: number;
@@ -48,21 +108,21 @@ const GAP = 4;
 /**
  * The lines of the text of a shape and where they go, in the frame of the shape. The text of an actor goes below its
  * silhouette, centered and without wrapping, as in the original; that of a custom shape goes where its placement says,
- * outside its picture without wrapping, or over it as in a rectangle. The lines wrap as measured in `font`, which is the
- * bold and italic of the shape unless given.
+ * outside its picture without wrapping, or over it as in a rectangle. The lines keep the spans of the text, and wrap as
+ * each span measures in its own bold and italic.
  */
-export function layoutText(shape: Shape, measure: Measure, font: Font = { bold: shape.bold, italic: shape.italic }): TextLayout {
+export function layoutText(shape: Shape, measure: Measure): TextLayout {
   const lineHeight = shape.fontSize * LINE_HEIGHT;
   const outside = shape.type === "actor" ? "below" : shape.type === "custom" && shape.labelPlacement !== "center" ? (shape.labelPlacement ?? "below") : null;
   if (outside) {
-    const lines = shape.text.split("\n");
+    const lines = paragraphsOf(spansOf(shape));
     const block = (lines.length - 1) * lineHeight;
     if (outside === "below") return { lines, x: 0, y: shape.h / 2 + GAP + lineHeight / 2, anchor: "middle", lineHeight };
     if (outside === "above") return { lines, x: 0, y: -shape.h / 2 - GAP - lineHeight / 2 - block, anchor: "middle", lineHeight };
     if (outside === "right") return { lines, x: shape.w / 2 + GAP * 2, y: -block / 2, anchor: "start", lineHeight };
     return { lines, x: -shape.w / 2 - GAP * 2, y: -block / 2, anchor: "end", lineHeight };
   }
-  const lines = wrap(shape.text, shape.w - PAD * 2, shape.fontSize, measure, font);
+  const lines = wrapSpans(spansOf(shape), shape.w - PAD * 2, shape.fontSize, measure);
   const block = (lines.length - 1) * lineHeight;
   const y =
     shape.textValign === "top" ? -shape.h / 2 + PAD + shape.fontSize / 2 : shape.textValign === "bottom" ? shape.h / 2 - PAD - shape.fontSize / 2 - block : -block / 2;
@@ -74,13 +134,13 @@ export function layoutText(shape: Shape, measure: Measure, font: Font = { bold: 
 /**
  * The lines of the text of a cell of a table and where they go, in the frame of the table: they wrap within the width
  * of the cell, as the text of a rectangle the size of the cell does, and are placed from its center. The cell is laid
- * out in the style it shows: its own font size and alignments over those of the table, measured in its bold and italic.
+ * out in the style it shows: its own font size and alignments over those of the table, drawn in its bold, italic and underline.
  */
 export function layoutCell(shape: Shape, row: number, col: number, measure: Measure): TextLayout {
   const { x, y, w, h } = cellBox(shape, row, col);
-  const { fontSize, bold, italic, textAlign, textValign } = cellStyleOf(shape, row, col);
+  const { fontSize, bold, italic, underline, textAlign, textValign } = cellStyleOf(shape, row, col);
   const text = tableOf(shape).cells[row]?.[col] ?? "";
-  const layout = layoutText({ ...shape, type: "rect", text, w, h, fontSize, textAlign, textValign }, measure, { bold, italic });
+  const layout = layoutText({ ...shape, type: "rect", text, textRuns: undefined, w, h, fontSize, bold, italic, underline, textAlign, textValign }, measure);
   return { ...layout, x: layout.x + x, y: layout.y + y };
 }
 

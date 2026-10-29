@@ -108,6 +108,7 @@ type StoredShape = {
   id: string;
   type: string;
   text: string;
+  textRuns?: { start: number; end: number; bold?: boolean; italic?: boolean; underline?: boolean }[];
   cells?: string[][];
   columns?: number[];
   rows?: number[];

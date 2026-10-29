@@ -395,3 +395,45 @@ describe("the corner radius of a rectangle", () => {
     for (const type of ["ellipse", "postit", "table", "image"]) assert.equal(read(type, { cornerRadius: 12 }).cornerRadius, undefined);
   });
 });
+
+describe("the text runs of a shape", () => {
+  const read = (fields: object) => readDiagram({ shapes: [{ id: "s", x: 0, y: 0, text: "Hello world", ...fields }] }, "d1").shapes[0];
+
+  test("an old shape has none, and the key is absent", () => {
+    assert.equal("textRuns" in read({}), false);
+    assert.equal("textRuns" in newShape("s", { x: 0, y: 0 }, 0), false);
+  });
+
+  test("valid runs are kept, sorted", () => {
+    const shape = read({ textRuns: [{ start: 6, end: 11, italic: true }, { start: 0, end: 5, bold: true, underline: false }] });
+    assert.deepEqual(shape.textRuns, [{ start: 0, end: 5, bold: true }, { start: 6, end: 11, italic: true }]);
+  });
+
+  test("a run that only repeats the style of the shape is dropped", () => {
+    const shape = read({ bold: true, textRuns: [{ start: 0, end: 5, bold: true }, { start: 6, end: 11, bold: false }] });
+    assert.deepEqual(shape.textRuns, [{ start: 6, end: 11, bold: false }]);
+  });
+
+  test("garbage is dropped", () => {
+    for (const textRuns of [
+      "bold",
+      [null, 3, "x", []],
+      [{ start: 0, end: 5 }],
+      [{ start: 3, end: 3, bold: true }],
+      [{ start: 5, end: 2, bold: true }],
+      [{ start: 0.5, end: 5, bold: true }],
+      [{ start: 0, end: 5, bold: "yes", italic: 1 }],
+      [{ start: "0", end: "5", bold: true }],
+    ]) assert.equal("textRuns" in read({ textRuns }), false, JSON.stringify(textRuns));
+  });
+
+  test("a run out of the text is clamped into it, and one wholly out is dropped", () => {
+    const shape = read({ textRuns: [{ start: -4, end: 5, bold: true }, { start: 8, end: 99, italic: true }, { start: 20, end: 30, underline: true }] });
+    assert.deepEqual(shape.textRuns, [{ start: 0, end: 5, bold: true }, { start: 8, end: 11, italic: true }]);
+  });
+
+  test("overlapping runs are resolved, the later one winning", () => {
+    const shape = read({ textRuns: [{ start: 0, end: 8, bold: true }, { start: 4, end: 11, italic: true }] });
+    assert.deepEqual(shape.textRuns, [{ start: 0, end: 4, bold: true }, { start: 4, end: 8, bold: true, italic: true }, { start: 8, end: 11, italic: true }]);
+  });
+});

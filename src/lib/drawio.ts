@@ -8,6 +8,7 @@ import type { Arrow, Diagram, LabelPlacement, Shape } from "./diagram.ts";
 import { cornerRadiusOf, degrees, type Endpoint, isAttached, lidOf, type Outlined, type Point, portPoint, portsOf } from "./geometry.ts";
 import { outlineOf, pictureKeyOf, type ShapeLibrary } from "./library.ts";
 import { boundsOf } from "./placement.ts";
+import { spansOf } from "./richtext.ts";
 import { cellStyleOf, columnEdges, rowEdges, tableOf } from "./table.ts";
 
 /** The colors of each key of the palette, in its light variant (base.css): fill, outline and text. */
@@ -46,6 +47,17 @@ const attribute = (text: string): string =>
 
 /** A text as the HTML of a label, which draw.io shows with `html=1`: its lines are kept. */
 const html = (text: string): string => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>");
+
+/** The HTML of the text of a shape: as `html` when it has no runs, otherwise each span in the `<b>`, `<i>` and `<u>` of its resolved style. */
+const richHtml = (shape: Shape): string => {
+  if (!shape.textRuns?.length) return html(shape.text);
+  return spansOf(shape)
+    .map((span) => {
+      const tags = [["b", span.bold], ["i", span.italic], ["u", span.underline]] as const;
+      return tags.reduceRight((inner, [tag, on]) => (on ? `<${tag}>${inner}</${tag}>` : inner), html(span.text));
+    })
+    .join("");
+};
 
 const styleOf = (parts: readonly string[]): string => `${parts.join(";")};`;
 
@@ -191,7 +203,8 @@ function shapeCell(shape: Shape, parent: Parent, pictureOf: (shape: Shape) => Pi
   if (shape.opacity < 1) parts.push(`${body ? "fillOpacity" : "opacity"}=${Math.round(shape.opacity * 100)}`);
   parts.push(`fontSize=${shape.fontSize}`);
   // A table has no text of its own: its cells carry the style.
-  const fontStyle = shape.type === "table" ? 0 : fontStyleOf(shape);
+  // The spans of a text with runs carry their style in tags, so the font style is left plain.
+  const fontStyle = shape.type === "table" || shape.textRuns?.length ? 0 : fontStyleOf(shape);
   if (fontStyle) parts.push(`fontStyle=${fontStyle}`);
   if (inside && shape.type !== "custom") parts.push(`align=${shape.textAlign}`, `verticalAlign=${shape.textValign}`);
   if (shape.rotation) parts.push(`rotation=${num(shape.rotation)}`);
@@ -199,7 +212,7 @@ function shapeCell(shape: Shape, parent: Parent, pictureOf: (shape: Shape) => Pi
   const geometry = `<mxGeometry x="${num(shape.x - w / 2 - parent.x)}" y="${num(shape.y - h / 2 - parent.y)}" width="${num(w)}" height="${num(h)}" as="geometry"/>`;
   // A custom shape whose definition is deleted shows its name, unless it has a text.
   const text = shape.type === "custom" && !picture ? shape.text || (shape.customShapeRef?.name ?? "") : shape.type === "table" ? "" : shape.text;
-  const cell = `<mxCell id="${attribute(shape.id)}" value="${attribute(html(text))}" style="${attribute(styleOf(parts))}" vertex="1" parent="${attribute(parent.id)}">${geometry}</mxCell>`;
+  const cell = `<mxCell id="${attribute(shape.id)}" value="${attribute(shape.textRuns?.length && text === shape.text ? richHtml(shape) : html(text))}" style="${attribute(styleOf(parts))}" vertex="1" parent="${attribute(parent.id)}">${geometry}</mxCell>`;
   return shape.type === "table" ? cell + tableChildren(shape) : cell;
 }
 
