@@ -1212,6 +1212,35 @@
         {@const stem = (shape.type === "table" ? TABLE_STEM : 26) / zoom}
         <g class="dg-handles" transform="translate({shape.x} {shape.y}) rotate({shape.rotation})">
           <line class="dg-stem" x1="0" y1={-shape.h / 2} x2="0" y2={-shape.h / 2 - stem} stroke-width={1 / zoom} />
+          {#if shape.type === "table"}
+            <!-- The separators, the right and bottom sides those of the last column and row, under the handles that resize the whole table. -->
+            {#each columnEdges(shape).slice(1) as edge, index (index)}
+              <rect
+                role="button"
+                tabindex="-1"
+                aria-label={t("resize_column", { n: index + 1 })}
+                class="dg-separator"
+                x={edge - 3 / zoom}
+                y={-shape.h / 2}
+                width={6 / zoom}
+                height={shape.h}
+                onpointerdown={(event) => startResizeTable(event, shape, { column: index })}
+              />
+            {/each}
+            {#each rowEdges(shape).slice(1) as edge, index (index)}
+              <rect
+                role="button"
+                tabindex="-1"
+                aria-label={t("resize_row", { n: index + 1 })}
+                class="dg-separator dg-separator-row"
+                x={-shape.w / 2}
+                y={edge - 3 / zoom}
+                width={shape.w}
+                height={6 / zoom}
+                onpointerdown={(event) => startResizeTable(event, shape, { row: index })}
+              />
+            {/each}
+          {/if}
           {#each CORNERS as corner (corner)}
             <rect
               role="button"
@@ -1240,32 +1269,6 @@
                 height={size * 2}
                 stroke-width={1.5 / zoom}
                 onpointerdown={(event) => startResizeTable(event, shape, { side })}
-              />
-            {/each}
-            {#each columnEdges(shape).slice(1, -1) as edge, index (index)}
-              <rect
-                role="button"
-                tabindex="-1"
-                aria-label={t("resize_column", { n: index + 1 })}
-                class="dg-separator"
-                x={edge - 3 / zoom}
-                y={-shape.h / 2}
-                width={6 / zoom}
-                height={shape.h}
-                onpointerdown={(event) => startResizeTable(event, shape, { column: index })}
-              />
-            {/each}
-            {#each rowEdges(shape).slice(1, -1) as edge, index (index)}
-              <rect
-                role="button"
-                tabindex="-1"
-                aria-label={t("resize_row", { n: index + 1 })}
-                class="dg-separator dg-separator-row"
-                x={-shape.w / 2}
-                y={edge - 3 / zoom}
-                width={shape.w}
-                height={6 / zoom}
-                onpointerdown={(event) => startResizeTable(event, shape, { row: index })}
               />
             {/each}
           {/if}

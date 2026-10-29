@@ -167,6 +167,51 @@ test("drags a column separator: only that column changes and the table widens, e
   assert.equal(undone.w, after.w);
 });
 
+test("the right border resizes the last column alone, the bottom border the last row, even turned", async () => {
+  const opened = await openView();
+  const { page, host } = opened;
+  const before = await selectedTable(opened);
+  const widths = before.columns!.map((part) => part * before.w);
+  const heights = before.rows!.map((part) => part * before.h);
+
+  // The border is grabbed away from the side handle in its middle and from the link handles of the cells along it.
+  const wider = await changed(host, before, () => dragFrom(page, before, before.w / 2, alongRight(before), 30, 0));
+  const nextWidths = wider.columns!.map((part) => part * wider.w);
+  assert.ok(Math.abs(nextWidths[2] - (widths[2] + 30)) < 2);
+  assert.ok(Math.abs(nextWidths[0] - widths[0]) < 0.5 && Math.abs(nextWidths[1] - widths[1]) < 0.5);
+  assert.ok(Math.abs(wider.w - (before.w + 30)) < 2);
+  assert.ok(Math.abs(wider.x - wider.w / 2 - (before.x - before.w / 2)) < 0.5, "the left side stays");
+
+  const taller = await changed(host, wider, () => dragFrom(page, wider, alongBottom(wider), wider.h / 2, 0, 20));
+  const nextHeights = taller.rows!.map((part) => part * taller.h);
+  assert.ok(Math.abs(nextHeights[2] - (heights[2] + 20)) < 2);
+  assert.ok(Math.abs(nextHeights[0] - heights[0]) < 0.5 && Math.abs(nextHeights[1] - heights[1]) < 0.5);
+  assert.ok(Math.abs(taller.h - (wider.h + 20)) < 2);
+  assert.ok(Math.abs(taller.y - taller.h / 2 - (wider.y - wider.h / 2)) < 0.5, "the top side stays");
+
+  for (let turn = 0; turn < 3; turn++) await page.getByRole("button", { name: "Rotate right by 10°" }).click();
+  await until(async () => (await storedDiagram(host)).shapes[0].rotation === 30, "the rotation to be stored");
+  const rotated = (await storedDiagram(host)).shapes[0];
+  const angle = (30 * Math.PI) / 180;
+  const turned = await changed(host, taller, () => dragFrom(page, rotated, rotated.w / 2, alongRight(rotated), 20 * Math.cos(angle), 20 * Math.sin(angle)));
+  assert.ok(Math.abs(turned.w - (taller.w + 20)) < 3, `${taller.w} became ${turned.w}`);
+  const turnedRow = await changed(host, turned, () => dragFrom(page, turned, alongBottom(turned), turned.h / 2, -20 * Math.sin(angle), 20 * Math.cos(angle)));
+  assert.ok(Math.abs(turnedRow.h - (turned.h + 20)) < 3, `${turned.h} became ${turnedRow.h}`);
+
+  const undone = await changed(host, turnedRow, () => page.keyboard.press("ControlOrMeta+z"));
+  assert.equal(undone.h, turned.h);
+  assert.equal(undone.w, turned.w);
+});
+
+test("a side handle still scales every column in proportion", async () => {
+  const opened = await openView();
+  const { page, host } = opened;
+  const before = await selectedTable(opened);
+  const after = await changed(host, before, () => dragHandle(page, "Resize from the right side", 40, 0));
+  assert.ok(after.w > before.w + 30);
+  after.columns!.forEach((part, index) => assert.ok(Math.abs(part - before.columns![index]) < 1e-6));
+});
+
 test("drags a row separator: only that row changes and the table grows, even turned", async () => {
   const opened = await openView();
   const { page, host } = opened;
@@ -200,6 +245,17 @@ test("drags a row separator: only that row changes and the table grows, even tur
 
 type Opened = Awaited<ReturnType<typeof openView>>;
 type Table = Awaited<ReturnType<typeof selectedTable>>;
+
+/** A quarter of the way along the first column or row, between the link handles at its corner and at its middle. */
+const alongBottom = (table: Table): number => -table.w / 2 + (table.columns![0] * table.w) / 4;
+const alongRight = (table: Table): number => -table.h / 2 + (table.rows![0] * table.h) / 4;
+
+/** Drags by (`dx`, `dy`) on screen from a point of the table given in its own frame, from its center and before its rotation. */
+async function dragFrom(page: Opened["page"], table: Table, lx: number, ly: number, dx: number, dy: number) {
+  const angle = (table.rotation * Math.PI) / 180;
+  const from = await at(page, table.x + lx * Math.cos(angle) - ly * Math.sin(angle), table.y + lx * Math.sin(angle) + ly * Math.cos(angle));
+  await drag(page, from, { x: from.x + dx, y: from.y + dy });
+}
 
 const links = (page: Opened["page"]) => page.getByRole("button", { name: /^Link from cell/ });
 
