@@ -4,7 +4,7 @@
   // as it goes and saves it when it ends. Shift+click on a shape follows its link, and "← Back" returns from a diagram
   // reached that way.
   import { untrack } from "svelte";
-  import { anchorOf, arrowAt, constrainAngle, distanceTo, endAt, endOf, isDrawable, isShiftable, labelPlacement, labelPoint, layoutArrows, middlesOf, type Path, pathData, pathWithin, pointsOf, shiftSegment, snapWaypoint, startOf } from "../lib/arrows.ts";
+  import { anchorOf, arrowAt, constrainAngle, distanceTo, endAt, endOf, isDrawable, isShiftable, labelPlacement, labelPoint, layoutArrows, middlesOf, type Path, pathData, pathWithin, pointsOf, shiftSegment, snapWaypoint, startOf, waypointAt } from "../lib/arrows.ts";
   import { applyStyle, type Clip, copyItems, copyStyle, imageToPaste, markClipboard, pasteItems } from "../lib/clipboard.ts";
   import { createArrow, createShape } from "../lib/defaults.ts";
   import { type Arrow, type Diagram, keepsRatio, type ShapeLink, newId, nextZ, removeShape, type Shape, withGroups } from "../lib/diagram.ts";
@@ -25,8 +25,9 @@
   let { diagram }: { diagram: Diagram } = $props();
 
   /** On screen, in pixels, whatever the zoom: the width of the click zone of an arrow on each side of its line, the reach
-   * of a port, and how far the pointer goes before a press becomes a drag. */
+   * of a waypoint and of a port, and how far the pointer goes before a press becomes a drag. */
   const HIT = 5;
+  const WAYPOINT_REACH = 6;
   const PORT_REACH = 8;
   const DRAG = 3;
   /** How near the line of its neighbor a waypoint aligns with it, on screen. */
@@ -66,7 +67,7 @@
     | { kind: "move"; id: string; from: Point; starts: (Box & { id: string })[]; lines: Line[]; moved: boolean }
     | { kind: "draw"; from: Endpoint; press: Point; at: Point; moved: boolean }
     | { kind: "end"; id: string; which: "from" | "to"; moved: boolean }
-    | { kind: "waypoint"; id: string; index: number; moved: boolean }
+    | { kind: "waypoint"; id: string; index: number; press: Point; moved: boolean }
     | { kind: "segment"; id: string; index: number; path: Path; from: Point; press: Point; moved: boolean }
     | { kind: "label"; id: string; grab: Point; moved: boolean }
     | { kind: "labelWidth"; id: string; moved: boolean }
@@ -408,7 +409,8 @@
       gesture.moved = true;
     } else if (gesture.kind === "waypoint") {
       const arrow = diagram.arrows.find((arrow) => arrow.id === (gesture as { id: string }).id);
-      if (!arrow) return;
+      // A click on the handle, or the press of a double-click that removes it, does not move it.
+      if (!arrow || (!gesture.moved && Math.hypot(event.clientX - gesture.press.x, event.clientY - gesture.press.y) <= DRAG)) return;
       moveWaypoint(arrow, gesture.index, at);
       gesture.moved = true;
     } else if (gesture.kind === "segment") {
@@ -427,7 +429,7 @@
         waypoints.splice(inserted, 0, at);
         arrow.waypoints = waypoints;
         moveWaypoint(arrow, inserted, at);
-        gesture = { kind: "waypoint", id: arrow.id, index: inserted, moved: true };
+        gesture = { kind: "waypoint", id: arrow.id, index: inserted, press: gesture.press, moved: true };
       }
     } else if (gesture.kind === "label") {
       const arrow = arrows.get(gesture.id);
@@ -580,7 +582,7 @@
 
   function startWaypoint(event: PointerEvent, arrow: Arrow, index: number) {
     if (event.button !== 0) return;
-    capture(event, { kind: "waypoint", id: arrow.id, index, moved: false });
+    capture(event, { kind: "waypoint", id: arrow.id, index, press: { x: event.clientX, y: event.clientY }, moved: false });
   }
 
   function startSegment(event: PointerEvent, arrow: Arrow, path: Path, index: number) {
@@ -588,8 +590,7 @@
     capture(event, { kind: "segment", id: arrow.id, index, path, from: toDrawing(event), press: { x: event.clientX, y: event.clientY }, moved: false });
   }
 
-  function removeWaypoint(event: MouseEvent, arrow: Arrow, index: number) {
-    event.stopPropagation();
+  function removeWaypoint(arrow: Arrow, index: number) {
     arrow.waypoints = arrow.waypoints.filter((_, position) => position !== index);
     void save();
   }
@@ -652,6 +653,9 @@
 
   function onDoubleClick(event: MouseEvent) {
     const at = toDrawing(event);
+    // A double-click on a waypoint of the selected arrow removes it: the press on its handle was captured by the canvas.
+    const waypoint = withEnds ? waypointAt(withEnds.waypoints, at, reach(WAYPOINT_REACH)) : undefined;
+    if (withEnds && waypoint !== undefined) return removeWaypoint(withEnds, waypoint);
     // A double-click on an arrow or on its label edits its label. The pointer is captured by the canvas during a press,
     // so the double-click reaches the canvas, and the label is found by its box.
     // A locked item is not edited.
@@ -1046,7 +1050,6 @@
             r={4.5 / zoom}
             stroke-width={1.5 / zoom}
             onpointerdown={(event) => startWaypoint(event, arrow, index)}
-            ondblclick={(event) => removeWaypoint(event, arrow, index)}
           />
         {/each}
         {#if arrow.label && !(editing?.kind === "label" && editing.id === arrow.id)}

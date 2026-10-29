@@ -606,6 +606,17 @@ export function snapWaypoint(point: Point, neighbors: readonly Point[], reach: n
   return { x: nearest("x"), y: nearest("y") };
 }
 
+/** The index of the waypoint nearest to `point`, within `reach` in units of the drawing, or none. */
+export function waypointAt(waypoints: readonly Point[], point: Point, reach: number): number | undefined {
+  let found: number | undefined;
+  let best = reach;
+  waypoints.forEach((waypoint, index) => {
+    const distance = Math.hypot(waypoint.x - point.x, waypoint.y - point.y);
+    if (distance <= best) [found, best] = [index, distance];
+  });
+  return found;
+}
+
 /**
  * The waypoints of an elbow route whose segment `index`, between two of its corners, is dragged by `delta`: the segment
  * moves sideways, and every corner of the route becomes a waypoint, so that the route keeps its shape.

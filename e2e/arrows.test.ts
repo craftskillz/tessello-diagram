@@ -96,6 +96,67 @@ test("an elbow made by a drag is found after a reload, keeps its waypoints when 
   assert.equal(await isSelected(page, name), true);
 });
 
+test("a double-click on a waypoint of the selected arrow removes it, one undo brings it back, and elsewhere on the line it edits the label", async () => {
+  const opened = await openView();
+  const { page, host } = opened;
+  await newDiagram(opened, "Waypoints");
+  await addRectangle(opened, -200, 0, "A");
+  await addRectangle(opened, 200, 0, "B");
+  await tool(page, "Arrow (F)");
+  await saved(host, async () => drag(page, await at(page, -200, 0), await at(page, 200, 0)));
+  await tool(page, "Select (S)");
+  await clickAt(page, 0, 0);
+  // Two waypoints: the first by the handle in the middle of the line, the second by that of its first segment.
+  await saved(host, async () => drag(page, await at(page, 0, 0), await at(page, 0, -80)));
+  const handle = await middleOf(page.getByRole("button", { name: "Drag to add a waypoint" }).first());
+  await saved(host, () => drag(page, handle, { x: handle.x, y: handle.y - 60 }));
+  const waypoints = async () => (await storedDiagram(host)).arrows[0].waypoints;
+  const before = await waypoints();
+  assert.equal(before.length, 2);
+  const editor = page.getByRole("textbox", { name: "Label of the arrow" });
+
+  const [first, second] = before;
+  // The pointer shifts by a pixel during the second press, as a hand does: the waypoint does not move before it goes.
+  const removed = await at(page, first.x, first.y);
+  await saved(host, async () => {
+    await page.mouse.click(removed.x, removed.y);
+    await page.mouse.down({ clickCount: 2 });
+    await page.mouse.move(removed.x + 1, removed.y);
+    await page.mouse.up({ clickCount: 2 });
+  });
+  assert.deepEqual(await waypoints(), [second]);
+  assert.equal(await editor.count(), 0);
+
+  await saved(host, () => page.keyboard.press("ControlOrMeta+z"));
+  assert.deepEqual(await waypoints(), before);
+
+  // Elsewhere on the line, the label is edited and the waypoints stay.
+  const aside = await at(page, 100, -40);
+  await page.mouse.dblclick(aside.x, aside.y);
+  await editor.waitFor();
+  assert.deepEqual(await waypoints(), before);
+});
+
+test("a double-click on a corner of the selected elbow arrow removes it", async () => {
+  const opened = await openView();
+  const { page, host } = opened;
+  await newDiagram(opened, "Corner");
+  await addRectangle(opened, -200, 0, "A");
+  await addRectangle(opened, 200, 200, "B");
+  await tool(page, "Arrow (F)");
+  await saved(host, async () => drag(page, await at(page, -200, 0), await at(page, 200, 200)));
+  await tool(page, "Select (S)");
+  const middle = await pointOn(page, "Arrow from Rectangle A to Rectangle B", 0.5);
+  await page.mouse.click(middle.x, middle.y);
+  await saved(host, () => page.getByRole("button", { name: "Elbow" }).click());
+  await saved(host, async () => drag(page, await at(page, 0, 100), await at(page, 60, 100)));
+  const [corner, other] = (await storedDiagram(host)).arrows[0].waypoints;
+  const point = await at(page, corner.x, corner.y);
+  await saved(host, () => page.mouse.dblclick(point.x, point.y));
+  assert.deepEqual((await storedDiagram(host)).arrows[0].waypoints, [other]);
+  assert.equal(await page.getByRole("textbox", { name: "Label of the arrow" }).count(), 0);
+});
+
 test("a dashed arrow with heads at both ends, 3 wide, with its label dragged along it and aside, is found after a reload", async () => {
   const opened = await openView();
   const { page, host } = opened;

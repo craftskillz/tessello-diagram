@@ -4,7 +4,7 @@ import { newShape } from "../src/lib/diagram.ts";
 import { contains, type Outlined } from "../src/lib/geometry.ts";
 import { outlineOf } from "../src/lib/library.ts";
 import { dragRowSeparator, dragSeparator, setColumnCount, setRowCount, type TableChange } from "../src/lib/table.ts";
-import { arrowAt, constrainAngle, distanceTo, endAt, endOf, headOf, headsOf, isDrawable, labelPlacement, labelPoint, layoutArrows, type Path, pathWithin, pointAlong, shiftSegment, snapWaypoint, startOf } from "../src/lib/arrows.ts";
+import { arrowAt, constrainAngle, distanceTo, endAt, endOf, headOf, headsOf, isDrawable, labelPlacement, labelPoint, layoutArrows, type Path, pathWithin, pointAlong, shiftSegment, snapWaypoint, startOf, waypointAt } from "../src/lib/arrows.ts";
 
 const close = (actual: { x: number; y: number }, expected: { x: number; y: number }, within = 1e-9) => {
   assert.ok(Math.abs(actual.x - expected.x) < within && Math.abs(actual.y - expected.y) < within, `${JSON.stringify(actual)} ≠ ${JSON.stringify(expected)}`);
@@ -534,5 +534,16 @@ describe("the label of an arrow", () => {
   test("dragged along a curve, is placed where it was dropped", () => {
     const path: Path = { points: [{ x: 0, y: 0 }, { x: 100, y: 0 }], controls: [[{ x: 0, y: -40 }, { x: 100, y: -40 }]] };
     placed(labelPlacement(path, labelPoint(path, 0.3, 15)), { at: 0.3, offset: 15 }, 0.01);
+  });
+});
+
+describe("the waypoint under a point", () => {
+  const waypoints = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 104, y: 0 }];
+
+  test("is the nearest one within reach, or none", () => {
+    assert.equal(waypointAt(waypoints, { x: 3, y: 4 }, 6), 0);
+    assert.equal(waypointAt(waypoints, { x: 103, y: 0 }, 6), 2);
+    assert.equal(waypointAt(waypoints, { x: 50, y: 0 }, 6), undefined);
+    assert.equal(waypointAt([], { x: 0, y: 0 }, 6), undefined);
   });
 });
