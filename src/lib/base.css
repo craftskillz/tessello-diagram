@@ -57,6 +57,8 @@ body {
 .dark .c-green { --fill: #052e16; --stroke: #22c55e; --text: #bbf7d0; }
 .c-lime { --fill: #ecfccb; --stroke: #84cc16; --text: #365314; }
 .dark .c-lime { --fill: #1a2e05; --stroke: #84cc16; --text: #d9f99d; }
+.c-yellow { --fill: #fef08a; --stroke: #eab308; --text: #713f12; }
+.dark .c-yellow { --fill: #422006; --stroke: #eab308; --text: #fef08a; }
 .c-amber { --fill: #fef9c3; --stroke: #f59e0b; --text: #78350f; }
 .dark .c-amber { --fill: #451a03; --stroke: #f59e0b; --text: #fde68a; }
 .c-orange { --fill: #ffedd5; --stroke: #f97316; --text: #7c2d12; }

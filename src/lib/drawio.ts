@@ -20,6 +20,7 @@ const PALETTE: Record<string, { fill: string; stroke: string; text: string }> = 
   "c-teal": { fill: "#ccfbf1", stroke: "#14b8a6", text: "#134e4a" },
   "c-green": { fill: "#dcfce7", stroke: "#22c55e", text: "#166534" },
   "c-lime": { fill: "#ecfccb", stroke: "#84cc16", text: "#365314" },
+  "c-yellow": { fill: "#fef08a", stroke: "#eab308", text: "#713f12" },
   "c-amber": { fill: "#fef9c3", stroke: "#f59e0b", text: "#78350f" },
   "c-orange": { fill: "#ffedd5", stroke: "#f97316", text: "#7c2d12" },
   "c-red": { fill: "#fee2e2", stroke: "#ef4444", text: "#7f1d1d" },

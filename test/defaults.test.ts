@@ -33,6 +33,13 @@ describe("the creation defaults read from the storage", () => {
     assert.equal("nothing" in defaults.shapes, false);
   });
 
+  test("the Post-it yellow is a color a stored default may take, and the Post-it keeps amber by default", () => {
+    const defaults = readDefaults({ arrows: { color: "c-yellow" }, shapes: { rect: { w: 200, h: 10, fontSize: 72, color: "c-yellow" } } });
+    assert.equal(defaults.arrows.color, "c-yellow");
+    assert.equal(defaults.shapes.rect.color, "c-yellow");
+    assert.equal(readDefaults(null).shapes.postit.color, "c-amber");
+  });
+
   test("a value that is not defaults at all is the factory values", () => {
     for (const value of ["defaults", [1, 2], { arrows: null, shapes: [] }]) assert.deepEqual(readDefaults(value), readDefaults(null));
   });
