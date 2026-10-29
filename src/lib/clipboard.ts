@@ -1,5 +1,6 @@
 // The clipboard of the Module, inside the View: the copied shapes and arrows, pasted as new ones, and the copied style,
-// applied to other shapes or arrows. Pure functions of the model (diagram.ts).
+// applied to other shapes or arrows. Pure functions of the model (diagram.ts), and of what the system clipboard holds: an
+// internal copy marks it, so that the last copy wins, whether it was made in the diagram or elsewhere.
 
 import { type Arrow, type Diagram, newId, nextZ, type Shape } from "./diagram.ts";
 import { type Endpoint, isAttached } from "./geometry.ts";
@@ -8,6 +9,31 @@ import { type Endpoint, isAttached } from "./geometry.ts";
 export interface Clip {
   shapes: Shape[];
   arrows: Arrow[];
+}
+
+/** The type under which an internal copy marks the system clipboard. */
+export const CLIP_TYPE = "application/x-tessello-diagram";
+
+/** The part of a DataTransfer these functions use. */
+export interface ClipboardData {
+  readonly types: readonly string[];
+  readonly files: ArrayLike<File>;
+  setData(type: string, value: string): void;
+}
+
+/**
+ * Marks the system clipboard as holding an internal copy, with the texts of its shapes as plain text. Writing it replaces
+ * any image copied elsewhere, and the marker tells a later paste that the copy of the diagram came last.
+ */
+export function markClipboard(data: Pick<ClipboardData, "setData">, clip: Clip): void {
+  data.setData(CLIP_TYPE, String(clip.shapes.length + clip.arrows.length));
+  data.setData("text/plain", clip.shapes.map((shape) => shape.text).filter(Boolean).join("\n"));
+}
+
+/** The image to paste from the system clipboard: none when it holds an internal copy, which came after any image. */
+export function imageToPaste(data: Pick<ClipboardData, "types" | "files"> | null | undefined): File | undefined {
+  if (!data || data.types.includes(CLIP_TYPE)) return undefined;
+  return Array.from(data.files).find((file) => file.type.startsWith("image/"));
 }
 
 /** A copy of a part of the model, which no longer follows it: the model is plain JSON, and may be held by Svelte state. */

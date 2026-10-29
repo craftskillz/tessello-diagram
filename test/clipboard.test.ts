@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { applyStyle, copyItems, copyStyle, pasteItems } from "../src/lib/clipboard.ts";
+import { applyStyle, CLIP_TYPE, copyItems, copyStyle, imageToPaste, markClipboard, pasteItems } from "../src/lib/clipboard.ts";
 import { type Diagram, newArrow, newDiagram, newShape } from "../src/lib/diagram.ts";
 
 /** Two grouped shapes joined by an arrow, a third shape, an arrow toward it and a free arrow. */
@@ -167,5 +167,32 @@ describe("a copied table", () => {
     assert.deepEqual(copy.cellStyles, [[{ color: "c-blue", bold: true }, {}]]);
     copy.cellStyles![0][0].color = "c-red";
     assert.equal(table.cellStyles[0][0].color, "c-blue");
+  });
+});
+
+describe("the system clipboard", () => {
+  const png = { type: "image/png" } as File;
+
+  test("an internal copy marks it, with the texts of its shapes as plain text", () => {
+    const written = new Map<string, string>();
+    const diagram = sample();
+    diagram.shapes[2].text = "Web";
+    markClipboard({ setData: (type, value) => void written.set(type, value) }, copyItems(diagram, ["api", "db", "web"]));
+    assert.ok(written.get(CLIP_TYPE));
+    assert.equal(written.get("text/plain"), "API\nWeb");
+  });
+
+  test("an image without the marker is pasted", () => {
+    assert.equal(imageToPaste({ types: ["Files"], files: [png] }), png);
+  });
+
+  test("the marker wins over an image, which the internal copy came after", () => {
+    assert.equal(imageToPaste({ types: ["Files", CLIP_TYPE], files: [png] }), undefined);
+  });
+
+  test("a file that is not an image, or no clipboard data, gives none", () => {
+    assert.equal(imageToPaste({ types: ["Files"], files: [{ type: "text/plain" } as File] }), undefined);
+    assert.equal(imageToPaste(null), undefined);
+    assert.equal(imageToPaste(undefined), undefined);
   });
 });

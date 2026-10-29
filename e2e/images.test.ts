@@ -3,7 +3,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { until } from "@tessello/sdk/testing";
-import { at, chooseImage, editStored, imagesStored, newDiagram, noisePng, openView, reload, saved, sidebar, storedDiagram, storedImages, tool, picture, useBrowser } from "./diagram.ts";
+import { CLIP_TYPE } from "../src/lib/clipboard.ts";
+import { addRectangle, at, chooseImage, editStored, imagesStored, newDiagram, noisePng, openView, reload, saved, sidebar, storedDiagram, storedImages, tool, picture, useBrowser } from "./diagram.ts";
 
 useBrowser();
 
@@ -138,6 +139,55 @@ test("pastes an image of the system clipboard in the middle of the view, caption
   await page.getByRole("img", { name: "Free text image", exact: true }).waitFor();
   const placed = (await storedDiagram(host)).shapes.find((shape) => shape.type === "image")!;
   assert.deepEqual([placed.x, placed.y], [0, 0]);
+});
+
+test("pastes the shapes copied in the diagram, not the image pasted before: the last copy wins", async () => {
+  const noise = await picture();
+  const opened = await openView();
+  const { page, host } = opened;
+  await newDiagram(opened, "Pictures");
+  const base64 = noise.toString("base64");
+  await saved(host, () =>
+    page.evaluate((base64) => {
+      const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+      const data = new DataTransfer();
+      data.items.add(new File([bytes], "image.png", { type: "image/png" }));
+      document.body.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true }));
+    }, base64),
+  );
+  await page.getByRole("img", { name: "Free text image", exact: true }).waitFor();
+  await addRectangle(opened, -200, 100, "A");
+
+  // The native copy event follows Ctrl+C. To be strict, the clipboard of the paste keeps the old image beside the marker.
+  const written = await page.evaluate(
+    ([base64, type]) => {
+      const data = new DataTransfer();
+      document.body.dispatchEvent(new ClipboardEvent("copy", { clipboardData: data, bubbles: true }));
+      const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+      data.items.add(new File([bytes], "image.png", { type: "image/png" }));
+      (window as unknown as { held: DataTransfer }).held = data;
+      return [...data.types].includes(type);
+    },
+    [base64, CLIP_TYPE],
+  );
+  assert.equal(written, true);
+  await saved(host, () => page.evaluate(() => document.body.dispatchEvent(new ClipboardEvent("paste", { clipboardData: (window as unknown as { held: DataTransfer }).held, bubbles: true }))));
+  const shapes = (await storedDiagram(host)).shapes;
+  assert.equal(shapes.filter((shape) => shape.type === "image").length, 1);
+  assert.equal(shapes.filter((shape) => shape.text === "A").length, 2);
+
+  // An image copied elsewhere after the internal copy is pasted as an image.
+  await saved(host, () =>
+    page.evaluate((base64) => {
+      const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+      const data = new DataTransfer();
+      data.items.add(new File([bytes], "image.png", { type: "image/png" }));
+      document.body.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true }));
+    }, base64),
+  );
+  const after = (await storedDiagram(host)).shapes;
+  assert.equal(after.filter((shape) => shape.type === "image").length, 2);
+  assert.equal(after.filter((shape) => shape.text === "A").length, 2);
 });
 
 test("an image missing from the storage shows a missing image frame", async () => {

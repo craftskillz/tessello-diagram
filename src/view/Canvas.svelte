@@ -5,7 +5,7 @@
   // reached that way.
   import { untrack } from "svelte";
   import { anchorOf, arrowAt, constrainAngle, distanceTo, endAt, endOf, isDrawable, isShiftable, labelPlacement, labelPoint, layoutArrows, middlesOf, type Path, pathData, pathWithin, pointsOf, shiftSegment, snapWaypoint, startOf } from "../lib/arrows.ts";
-  import { applyStyle, copyItems, copyStyle, pasteItems } from "../lib/clipboard.ts";
+  import { applyStyle, type Clip, copyItems, copyStyle, imageToPaste, markClipboard, pasteItems } from "../lib/clipboard.ts";
   import { createArrow, createShape } from "../lib/defaults.ts";
   import { type Arrow, type Diagram, keepsRatio, type ShapeLink, newId, nextZ, removeShape, type Shape, withGroups } from "../lib/diagram.ts";
   import { type Box, boxWithin, CONNECTION_DIRECTIONS, type ConnectionDirection, connectionHandlePoint, connectionPort, contains, type Corner, cornersOf, cornerSign, degrees, type Endpoint, isAttached, type Point, portPoint, portsOf, resizeBox, rotate, shapeAt } from "../lib/geometry.ts";
@@ -732,9 +732,8 @@
       event.preventDefault();
       void exportPng();
     } else if (ctrl && key === "c") {
-      if (!ui.selection.length) return;
-      ui.clip = copyItems(diagram, ui.selection);
-      ui.pastes = 0;
+      // No preventDefault: the native copy event follows, and writes the system clipboard (onCopy).
+      copySelection();
     } else if ((event.key === "Delete" || event.key === "Backspace") && ui.selection.length) {
       // Deleting a shape frees the ends of its arrows; Ctrl/Cmd+Delete deletes its arrows too. Locked items stay.
       const removed = unlockedIds(ui.selection);
@@ -758,13 +757,34 @@
     } else if (!event.ctrlKey && !event.metaKey && !event.altKey && TOOL_KEYS[key]) ui.tool = TOOL_KEYS[key];
   }
 
+  /** Keeps the selection as the copy that Ctrl/Cmd+V pastes, and returns it; none when nothing is selected. */
+  function copySelection(): Clip | undefined {
+    if (!ui.selection.length) return undefined;
+    ui.clip = copyItems(diagram, ui.selection);
+    ui.pastes = 0;
+    return ui.clip;
+  }
+
   /**
-   * Ctrl/Cmd+V: an image of the system clipboard is placed in the middle of the view, captioned "image"; without one,
-   * what Ctrl/Cmd+C copied is pasted. Only the `paste` event tells what the system clipboard holds.
+   * The `copy` event of Ctrl/Cmd+C: the system clipboard is marked as holding a copy of the diagram, which replaces
+   * a picture copied elsewhere, so that the last copy wins. In a text field the copy stays native.
+   */
+  function onCopy(event: ClipboardEvent) {
+    if (typing(event) || !event.clipboardData) return;
+    const clip = copySelection();
+    if (!clip) return;
+    event.preventDefault();
+    markClipboard(event.clipboardData, clip);
+  }
+
+  /**
+   * Ctrl/Cmd+V: unless the system clipboard is marked by a copy of the diagram, an image it holds is placed in the
+   * middle of the view, captioned "image"; otherwise what Ctrl/Cmd+C copied is pasted. Only the `paste` event tells
+   * what the system clipboard holds.
    */
   function onPaste(event: ClipboardEvent) {
     if (typing(event)) return;
-    const file = [...(event.clipboardData?.files ?? [])].find((file) => file.type.startsWith("image/"));
+    const file = imageToPaste(event.clipboardData);
     if (file) {
       event.preventDefault();
       return void insertImage(file, captionOf(""), viewCenter());
@@ -915,6 +935,7 @@
 <svelte:window
   onkeydown={onKeyDown}
   onkeyup={onKeyUp}
+  oncopy={onCopy}
   onpaste={onPaste}
   onpointermove={onPointerMove}
   onpointerup={onPointerUp}
