@@ -437,3 +437,25 @@ describe("the text runs of a shape", () => {
     assert.deepEqual(shape.textRuns, [{ start: 0, end: 4, bold: true }, { start: 4, end: 8, bold: true, italic: true }, { start: 8, end: 11, italic: true }]);
   });
 });
+
+describe("reading the code block of a shape", () => {
+  const read = (type: string, code: unknown) => readDiagram({ shapes: [{ id: "s1", x: 0, y: 0, type, code }] }, "d1").shapes[0];
+
+  test("a valid code block is kept, with an empty language too", () => {
+    assert.deepEqual(read("rect", { language: "bash" }).code, { language: "bash" });
+    assert.deepEqual(read("postit", { language: "" }).code, { language: "" });
+  });
+
+  test("a code block that cannot be read is ignored", () => {
+    for (const code of [null, "bash", 3, [], {}, { language: 4 }]) assert.equal("code" in read("rect", code), false);
+  });
+
+  test("a table and an image have no code block", () => {
+    assert.equal("code" in read("table", { language: "ts" }), false);
+    assert.equal("code" in read("image", { language: "ts" }), false);
+  });
+
+  test("a shape without a code block stays without one", () => {
+    assert.equal("code" in readDiagram({ shapes: [{ id: "s1", x: 0, y: 0 }] }, "d1").shapes[0], false);
+  });
+});

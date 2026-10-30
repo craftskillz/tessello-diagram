@@ -2,9 +2,12 @@
   // The editor of the text of a shape: a contenteditable that shows the bold, italic and underline of each part of the text
   // while it is typed. The spans (richtext.ts) are the truth: the DOM is read back into spans after every input, and a
   // command (a style, a line break, a paste) changes the spans and draws them again, the selection kept by text offset.
-  // Enter applies, Shift+Enter adds a line, Escape abandons, leaving the field applies. The state of its selection is
+  // Enter applies, Shift+Enter adds a line, Ctrl/Cmd+Enter applies, Escape abandons, leaving the field applies. The state of its selection is
   // published for the panel, whose buttons act on it. Ctrl/Cmd+Z undoes within the editor from its own history, since
   // the browser's would not know of our redrawing; once applied, the undo of the diagram takes the whole edit as one step.
+  // The text of a code block is edited plain, in the monospace font with its spaces kept and no wrapping: there Enter
+  // adds a line and Tab two spaces, Ctrl/Cmd+Enter applies, and the styles are ignored. Its runs are returned only when
+  // the text is unchanged, to be found again on a return to normal text.
   import { onMount } from "svelte";
   import { baseOf, deleteRange, EMPHASES, type Emphasis, fromSpans, insertText, rangeStyle, type Span, type SpanStyle, spansOf, styleRange, type TextRun } from "../lib/richtext.ts";
   import { LINE_HEIGHT } from "../lib/text.ts";
@@ -55,7 +58,9 @@
   let typing = false;
 
   // svelte-ignore state_referenced_locally
-  const base = baseOf(shape);
+  const code = !!shape.code;
+  // svelte-ignore state_referenced_locally
+  const base = code ? { bold: false, italic: false, underline: false } : baseOf(shape);
 
   // ── DOM to spans ──
   const styleOf = (element: HTMLElement, parent: SpanStyle): SpanStyle => {
@@ -228,7 +233,8 @@
       return type === "historyUndo" ? undo() : redo();
     }
     if (!type.startsWith("format")) remember(type === "insertText" && event.data !== " ");
-    if (type === "insertLineBreak" || type === "insertParagraph") insertThen(event, "\n");
+    if (code && type.startsWith("format")) event.preventDefault();
+    else if (type === "insertLineBreak" || type === "insertParagraph") insertThen(event, "\n");
     else if (type === "insertFromPaste" || type === "insertFromDrop") insertThen(event, (event.dataTransfer?.getData("text/plain") ?? "").replace(/\r\n?/g, "\n"));
     else if (type === "insertText" && pending && event.data) insertThen(event, event.data);
     else if (type === "formatBold" || type === "formatItalic" || type === "formatUnderline") {
@@ -245,7 +251,9 @@
   function finish() {
     if (done) return;
     done = true;
-    onapply(fromSpans(read(), shape));
+    if (!code) return onapply(fromSpans(read(), shape));
+    const text = read().map((span) => span.text).join("");
+    onapply(text === shape.text && shape.textRuns ? { text, textRuns: shape.textRuns } : { text });
   }
 
   function onKeyDown(event: KeyboardEvent) {
@@ -259,10 +267,18 @@
     } else if (style) {
       event.preventDefault();
       event.stopPropagation();
-      toggle(style);
-    } else if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+      if (!code) toggle(style);
+    } else if (event.key === "Enter" && !event.isComposing && (event.ctrlKey || event.metaKey || (!code && !event.shiftKey))) {
       event.preventDefault();
       finish();
+    } else if (code && event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+      event.preventDefault();
+      remember(false);
+      insert("\n");
+    } else if (code && event.key === "Tab" && !event.shiftKey) {
+      event.preventDefault();
+      remember(false);
+      insert("  ");
     } else if (event.key === "Escape") {
       event.preventDefault();
       done = true;
@@ -280,7 +296,7 @@
   }
 
   onMount(() => {
-    render(spansOf(shape));
+    render(code ? [{ text: shape.text, ...base }].filter((span) => span.text) : spansOf(shape));
     root.focus();
     select(0, root.textContent?.length ?? 0);
     publish();
@@ -308,10 +324,11 @@
   style:height="{height}px"
   style:font-size="{fontSize}px"
   style:line-height={LINE_HEIGHT}
-  style:text-align={shape.textAlign}
-  style:font-weight={shape.bold ? "bold" : undefined}
-  style:font-style={shape.italic ? "italic" : undefined}
-  style:text-decoration={shape.underline ? "underline" : undefined}
+  class:dg-code={code}
+  style:text-align={code ? "left" : shape.textAlign}
+  style:font-weight={!code && shape.bold ? "bold" : undefined}
+  style:font-style={!code && shape.italic ? "italic" : undefined}
+  style:text-decoration={!code && shape.underline ? "underline" : undefined}
   onkeydown={onKeyDown}
   onbeforeinput={onBeforeInput}
   oninput={publish}
@@ -330,5 +347,9 @@
     white-space: pre-wrap;
     overflow: auto;
     outline: none;
+  }
+  .dg-text-editor.dg-code {
+    font-family: var(--mono);
+    white-space: pre;
   }
 </style>

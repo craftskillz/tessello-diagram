@@ -249,3 +249,48 @@ describe("the text runs of a copied shape", () => {
     assert.equal(diagram.shapes[0].textRuns![0].end, 2);
   });
 });
+
+describe("the code block of a shape", () => {
+  const codeShape = (id: string, type: "rect" | "table" | "image" = "rect") => ({ ...newShape(id, { x: 0, y: 0 }, 0, type), text: "ls", textRuns: [{ start: 0, end: 1, bold: true }], code: { language: "bash" } });
+
+  test("travels with a pasted shape, which does not share it with the original", () => {
+    const diagram = newDiagram("d1", "Code", 0);
+    diagram.shapes = [codeShape("s")];
+    const [id] = pasteItems(diagram, copyItems(diagram, ["s"]), 20, ids);
+    const pasted = diagram.shapes.find((shape) => shape.id === id)!;
+    assert.deepEqual(pasted.code, { language: "bash" });
+    pasted.code!.language = "json";
+    assert.equal(diagram.shapes[0].code!.language, "bash");
+  });
+
+  test("a style copied from a code shape makes the others code, in a copy of its language", () => {
+    const target = newShape("t", { x: 0, y: 0 }, 0);
+    const style = copyStyle(codeShape("s"), false);
+    applyStyle(style, [target], []);
+    assert.deepEqual(target.code, { language: "bash" });
+    target.code!.language = "json";
+    const other = newShape("o", { x: 0, y: 0 }, 0);
+    applyStyle(style, [other], []);
+    assert.deepEqual(other.code, { language: "bash" });
+  });
+
+  test("a style copied from a normal shape takes the code block off the others", () => {
+    const target = codeShape("t");
+    applyStyle(copyStyle(newShape("s", { x: 0, y: 0 }, 0), false), [target], []);
+    assert.equal("code" in target, false);
+  });
+
+  test("a style never gives a code block to a table or an image", () => {
+    const table = newShape("t", { x: 0, y: 0 }, 0, "table");
+    const image = newShape("i", { x: 0, y: 0 }, 0, "image");
+    applyStyle(copyStyle(codeShape("s"), false), [table, image], []);
+    assert.equal("code" in table, false);
+    assert.equal("code" in image, false);
+  });
+
+  test("pasting a style leaves the text as it is", () => {
+    const target = { ...newShape("t", { x: 0, y: 0 }, 0), text: "hello" };
+    applyStyle(copyStyle(codeShape("s"), false), [target], []);
+    assert.equal(target.text, "hello");
+  });
+});

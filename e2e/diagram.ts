@@ -109,6 +109,7 @@ type StoredShape = {
   type: string;
   text: string;
   textRuns?: { start: number; end: number; bold?: boolean; italic?: boolean; underline?: boolean }[];
+  code?: { language: string };
   cells?: string[][];
   columns?: number[];
   rows?: number[];

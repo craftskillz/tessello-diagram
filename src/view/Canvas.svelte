@@ -6,6 +6,7 @@
   import { untrack } from "svelte";
   import { anchorOf, arrowAt, constrainAngle, distanceTo, endAt, endOf, isDrawable, isShiftable, labelPlacement, labelPoint, layoutArrows, middlesOf, type Path, pathData, pathWithin, pointsOf, shiftSegment, snapWaypoint, startOf, waypointAt } from "../lib/arrows.ts";
   import { applyStyle, type Clip, copyItems, copyStyle, imageToPaste, markClipboard, pasteItems } from "../lib/clipboard.ts";
+  import { canBeCode, fromFence } from "../lib/code.ts";
   import { createArrow, createShape } from "../lib/defaults.ts";
   import { type Arrow, type Diagram, keepsRatio, type ShapeLink, newId, nextZ, removeShape, type Shape, withGroups } from "../lib/diagram.ts";
   import { type Box, boxWithin, CONNECTION_DIRECTIONS, type ConnectionDirection, connectionHandlePoint, connectionPort, contains, type Corner, cornersOf, cornerSign, degrees, type Endpoint, isAttached, type Point, offeredPorts, portPoint, resizeBox, rotate, shapeAt } from "../lib/geometry.ts";
@@ -841,7 +842,7 @@
     if (event.key === " ") spaceHeld = false;
   }
 
-  // ── Text of a shape or label of an arrow: Enter applies, Shift+Enter adds a line, Escape abandons, leaving the field applies ──
+  // ── Text of a shape or label of an arrow: Enter applies (Ctrl/Cmd+Enter too; in a code block Enter adds a line), Shift+Enter adds a line, Escape abandons, leaving the field applies ──
   // The text of a table is that of a cell: the one given, or its first by default, as for the panel's "Edit text".
   function startEditing(id: string, cell?: { row: number; col: number }) {
     const shape = shapes.get(id);
@@ -910,11 +911,20 @@
   /** The selection of the editor of a shape's text, while there is one, for the panel. */
   let textSelection = $state<TextSelection | null>(null);
 
-  /** Applies the text, and its runs, of the shape being edited: one undo step, none when nothing changed. */
+  /** Applies the text, and its runs, of the shape being edited: one undo step, none when nothing changed. A fenced text (```lang … ```) makes the shape a code block, the fences removed and the runs dropped. */
   function applyRichText({ text, textRuns }: { text: string; textRuns?: TextRun[] }) {
     const shape = editedShape;
     editing = null;
-    if (!shape || (shape.text === text && JSON.stringify(shape.textRuns) === JSON.stringify(textRuns))) return;
+    if (!shape) return;
+    const fenced = canBeCode(shape) ? fromFence(text) : null;
+    if (fenced) {
+      if (shape.text === fenced.text && shape.code?.language === fenced.language && !shape.textRuns) return;
+      shape.text = fenced.text;
+      shape.code = { language: fenced.language };
+      delete shape.textRuns;
+      return void save();
+    }
+    if (shape.text === text && JSON.stringify(shape.textRuns) === JSON.stringify(textRuns)) return;
     shape.text = text;
     if (textRuns) shape.textRuns = textRuns;
     else delete shape.textRuns;

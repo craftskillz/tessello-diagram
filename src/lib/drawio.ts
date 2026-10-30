@@ -61,6 +61,12 @@ const richHtml = (shape: Shape): string => {
     .join("");
 };
 
+/** The HTML of a code block: its text plain, every space a `&nbsp;` so that draw.io keeps them, its lines kept. */
+const codeHtml = (text: string): string => html(text).replace(/ /g, "&nbsp;");
+
+/** The HTML of the text a shape shows: a code block plain with its spaces, a text with runs in its tags, else as `html`. */
+const labelHtml = (shape: Shape, text: string): string => (shape.code ? codeHtml(text) : shape.textRuns?.length && text === shape.text ? richHtml(shape) : html(text));
+
 const styleOf = (parts: readonly string[]): string => `${parts.join(";")};`;
 
 /** The size of the cell of a shape: that of its box, but a circle is as wide as the smaller side of its box. */
@@ -195,9 +201,14 @@ function tableChildren(shape: Shape): string {
 function shapeCell(shape: Shape, parent: Parent, pictureOf: (shape: Shape) => Picture): string {
   const colors = PALETTE[shape.color] ?? PALETTE["c-gray"];
   const picture = pictureOf(shape);
-  const { parts, body, inside } = outlineStyle(shape, picture);
+  const outline = outlineStyle(shape, picture);
+  const { body, inside } = outline;
+  // The label position parts of a custom shape or an actor put its text outside; a code block stays inside.
+  const parts = shape.code ? outline.parts.filter((part) => !/^(verticalLabelPosition|labelPosition|verticalAlign|align)=/.test(part)) : outline.parts;
   // A text outside its shape, such as below an actor, does not wrap within its width.
-  if (inside) parts.push("whiteSpace=wrap");
+  // A code block is never wrapped, and sits inside its shape, whatever its type.
+  if (shape.code) parts.push("whiteSpace=nowrap", "overflow=hidden");
+  else if (inside) parts.push("whiteSpace=wrap");
   parts.push("html=1");
   if (body) parts.push(`fillColor=${colors.fill}`, `strokeColor=${colors.stroke}`);
   parts.push(`fontColor=${colors.text}`);
@@ -206,15 +217,16 @@ function shapeCell(shape: Shape, parent: Parent, pictureOf: (shape: Shape) => Pi
   parts.push(`fontSize=${shape.fontSize}`);
   // A table has no text of its own: its cells carry the style.
   // The spans of a text with runs carry their style in tags, so the font style is left plain.
-  const fontStyle = shape.type === "table" || shape.textRuns?.length ? 0 : fontStyleOf(shape);
+  const fontStyle = shape.type === "table" || shape.code || shape.textRuns?.length ? 0 : fontStyleOf(shape);
   if (fontStyle) parts.push(`fontStyle=${fontStyle}`);
-  if (inside && shape.type !== "custom") parts.push(`align=${shape.textAlign}`, `verticalAlign=${shape.textValign}`);
+  if (shape.code) parts.push("fontFamily=Courier New", "align=left", "verticalAlign=top");
+  else if (inside && shape.type !== "custom") parts.push(`align=${shape.textAlign}`, `verticalAlign=${shape.textValign}`);
   if (shape.rotation) parts.push(`rotation=${num(shape.rotation)}`);
   const { w, h } = sizeOf(shape);
   const geometry = `<mxGeometry x="${num(shape.x - w / 2 - parent.x)}" y="${num(shape.y - h / 2 - parent.y)}" width="${num(w)}" height="${num(h)}" as="geometry"/>`;
   // A custom shape whose definition is deleted shows its name, unless it has a text.
   const text = shape.type === "custom" && !picture ? shape.text || (shape.customShapeRef?.name ?? "") : shape.type === "table" ? "" : shape.text;
-  const cell = `<mxCell id="${attribute(shape.id)}" value="${attribute(shape.textRuns?.length && text === shape.text ? richHtml(shape) : html(text))}" style="${attribute(styleOf(parts))}" vertex="1" parent="${attribute(parent.id)}">${geometry}</mxCell>`;
+  const cell = `<mxCell id="${attribute(shape.id)}" value="${attribute(labelHtml(shape, text))}" style="${attribute(styleOf(parts))}" vertex="1" parent="${attribute(parent.id)}">${geometry}</mxCell>`;
   return shape.type === "table" ? cell + tableChildren(shape) : cell;
 }
 

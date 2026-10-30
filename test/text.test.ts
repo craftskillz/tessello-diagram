@@ -110,3 +110,52 @@ describe("the text of a table cell", () => {
   });
 });
 const near = (actual: number, expected: number) => assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} is not ${expected}`);
+
+describe("the text of a code block", () => {
+  const code = (text: string, more: object = {}) => ({ ...newShape("c", { x: 0, y: 0 }, 0), w: 100, h: 60, fontSize: 10, text, code: { language: "bash" }, ...more });
+
+  test("does not wrap: each line of the text is one line, however wide", () => {
+    const layout = layoutText(code("a very long line that would wrap\nok"), measure);
+    assert.deepEqual(plain(layout.lines), ["a very long line that would wrap", "ok"]);
+  });
+
+  test("keeps the indentation and the multiple spaces, and has no spans in an empty line", () => {
+    const layout = layoutText(code("if x:\n    y  =  1\n\nend"), measure);
+    assert.deepEqual(plain(layout.lines), ["if x:", "    y  =  1", "", "end"]);
+    assert.deepEqual(layout.lines[2], []);
+    assert.deepEqual(layout.lines[1], [{ text: "    y  =  1", bold: false, italic: false, underline: false }]);
+  });
+
+  test("sits at the top-left, whatever the alignments", () => {
+    for (const [textAlign, textValign] of [["center", "middle"], ["right", "bottom"]] as const) {
+      const layout = layoutText(code("x", { textAlign, textValign }), measure);
+      assert.deepEqual([layout.anchor, layout.x, layout.y], ["start", -50 + 8, -30 + 8 + 5]);
+    }
+  });
+
+  test("ignores the bold, italic and underline of the shape and of its runs, without changing the shape", () => {
+    const shape = code("abcdef", { bold: true, italic: true, underline: true, textRuns: [{ start: 0, end: 3, bold: false }] });
+    const before = structuredClone(shape);
+    const layout = layoutText(shape, measure);
+    assert.deepEqual(layout.lines, [[{ text: "abcdef", bold: false, italic: false, underline: false }]]);
+    assert.deepEqual(shape, before);
+  });
+
+  test("sits inside the box for an actor or a custom shape with an outside label", () => {
+    for (const shape of [code("x", { type: "actor" }), code("x", { type: "custom", labelPlacement: "below" })]) {
+      const layout = layoutText(shape, measure);
+      assert.deepEqual([layout.anchor, layout.x, layout.y], ["start", -42, -17]);
+    }
+  });
+
+  test("leaves a shape without code as it was", () => {
+    const layout = layoutText(code("a b", { code: undefined }), measure);
+    assert.deepEqual([layout.anchor, layout.x, layout.y], ["middle", 0, -0]);
+  });
+
+  test("never leaks into the cell of a table", () => {
+    const table = { ...newShape("t", { x: 0, y: 0 }, 0, "table"), code: { language: "bash" } };
+    const layout = layoutCell(table, 0, 0, measure);
+    assert.equal(layout.anchor === "start" && layout.x === -table.w / 2 + 8 && layout.y === -table.h / 2 + 8 + table.fontSize / 2, false);
+  });
+});

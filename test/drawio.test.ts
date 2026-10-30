@@ -425,3 +425,39 @@ describe("the name of an exported file", () => {
     assert.equal(fileNameOf("a".repeat(200), "png"), `${"a".repeat(80)}.png`);
   });
 });
+
+describe("converting a code block to draw.io", () => {
+  const exported = (more: object, id = "k") => {
+    const diagram = newDiagram("d1", "Code", 0);
+    diagram.shapes = [{ ...newShape(id, { x: 0, y: 0 }, 0), text: "if a < b:\n    run  & go", code: { language: "bash" }, ...more }];
+    const { xml } = convert(diagram);
+    const { attributes } = cellOf(xml, id);
+    return { value: attributes.value, style: parseStyle(attributes.style) };
+  };
+
+  test("writes every space as &nbsp; and the lines as <br>, escaped", () => {
+    assert.equal(exported({}).value, "if&amp;nbsp;a&amp;nbsp;&amp;lt;&amp;nbsp;b:&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;run&amp;nbsp;&amp;nbsp;&amp;amp;&amp;nbsp;go");
+  });
+
+  test("is monospace, left and top, not wrapped, clipped, with no font style", () => {
+    const { style } = exported({ bold: true, italic: true, textAlign: "right", textValign: "bottom", fontSize: 14 });
+    assert.deepEqual([style.fontFamily, style.align, style.verticalAlign, style.whiteSpace, style.overflow, style.fontStyle, style.fontSize], ["Courier New", "left", "top", "nowrap", "hidden", undefined, "14"]);
+  });
+
+  test("ignores the runs", () => {
+    const { value } = exported({ text: "ab", textRuns: [{ start: 0, end: 1, bold: true }] });
+    assert.equal(value, "ab");
+  });
+
+  test("sits inside a custom shape or an actor, left and top", () => {
+    for (const more of [{ type: "custom", labelPlacement: "below" }, { type: "actor" }]) {
+      const { style } = exported(more);
+      assert.deepEqual([style.align, style.verticalAlign, style.whiteSpace, style.labelPosition, style.verticalLabelPosition], ["left", "top", "nowrap", undefined, undefined]);
+    }
+  });
+
+  test("leaves a shape without code as it was", () => {
+    const { style } = exported({ code: undefined, text: "a b" });
+    assert.deepEqual([style.fontFamily, style.whiteSpace, style.overflow], [undefined, "wrap", undefined]);
+  });
+});

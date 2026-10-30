@@ -4,7 +4,9 @@
   // variant; the opacity is that of its fill only, so that its outline and text stay readable. An image shows its
   // picture, read from the storage, or a "missing image" frame when the storage no longer has it. A custom shape shows
   // the picture of its definition, or a dashed frame with its name when its definition is deleted. A shape with a link
-  // shows a chain at its bottom right corner, in the blue of the palette for a page, and its orange for a diagram.
+  // shows a chain at its bottom right corner, in the blue of the palette for a page, and its orange for a diagram. A code
+  // block is drawn in the monospace font with its spaces kept, clipped to the box of the shape (outside the turning of
+  // its text), and its language shows small in the top right corner.
   import type { Shape } from "../lib/diagram.ts";
   import { cornerRadiusOf, lidOf } from "../lib/geometry.ts";
   import { t } from "../lib/i18n.ts";
@@ -57,6 +59,7 @@
       ),
     };
   });
+  const clipId = $derived(`dg-clip-${shape.id.replace(/[^A-Za-z0-9_-]/g, "_")}`);
   const lid = $derived(lidOf(h));
   const fold = $derived(Math.min(w, h) * 0.18);
   // The actor is drawn in a 30 × 52 box, scaled to the shape.
@@ -169,11 +172,19 @@
       {/if}
     {/each}
   {:else if !editing && shape.text}
-    <text font-size={shape.fontSize} text-anchor={text.anchor} dominant-baseline="central" transform="rotate({shape.textRotation})">
-      {#each text.lines as line, index}
-        <tspan x={text.x} y={text.y + index * text.lineHeight}>{@render spans(line)}</tspan>
-      {/each}
-    </text>
+    {#if shape.code}
+      <clipPath id={clipId}><rect x={-w / 2} y={-h / 2} width={w} height={h} /></clipPath>
+    {/if}
+    <g clip-path={shape.code ? `url(#${clipId})` : undefined}>
+      <text class:dg-code={!!shape.code} font-size={shape.fontSize} text-anchor={text.anchor} dominant-baseline="central" transform="rotate({shape.textRotation})">
+        {#each text.lines as line, index}
+          <tspan x={text.x} y={text.y + index * text.lineHeight}>{@render spans(line)}</tspan>
+        {/each}
+      </text>
+    </g>
+  {/if}
+  {#if shape.code?.language && !grid}
+    <text class="dg-code-language" x={w / 2 - 6} y={-h / 2 + 6} font-size="10" text-anchor="end" dominant-baseline="hanging">{shape.code.language}</text>
   {/if}
 </g>
 
@@ -231,6 +242,14 @@
   text {
     fill: var(--text);
     pointer-events: none;
+  }
+  text.dg-code {
+    font-family: var(--mono);
+    white-space: pre;
+  }
+  text.dg-code-language {
+    fill: var(--muted);
+    font-family: var(--mono);
   }
   text.dg-missing {
     fill: var(--muted);

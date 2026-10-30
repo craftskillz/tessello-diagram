@@ -6,9 +6,11 @@
   // next), else on the whole text, which erases the styles of its parts. On a table, the color, the text size, the bold,
   // italic and underline and the alignments style the selected cells when there are some, else the whole table, which
   // erases the own style of its cells. "Save as default for this shape type" makes the style of one built-in shape the
-  // default of its type. The panel is docked beside the canvas, so that it never hides the drawing.
+  // default of its type. A "Code" switch shows the text of the selected shapes as a code block (all but tables and images),
+  // with a language field; while all are code, the emphasis and alignment controls are hidden. The panel is docked beside the canvas, so that it never hides the drawing.
   import { isBuiltIn, shapeAsDefault } from "../lib/defaults.ts";
   import { type CellStyle, clampFontSize, COLORS, CORNER_RADIUS, FONT_SIZES, groupShapes, LABEL_PLACEMENTS, type LabelPlacement, reorder, type Shape, ungroupShapes } from "../lib/diagram.ts";
+  import { canBeCode, LANGUAGES } from "../lib/code.ts";
   import { degrees } from "../lib/geometry.ts";
   import { type Emphasis, styleWhole, wholeStyle } from "../lib/richtext.ts";
   import { type CellRange, MAX_CELLS, setColumnCount, setRowCount, sharedCellStyle, styleCells, styleTable, tableOf, wholeRange } from "../lib/table.ts";
@@ -80,6 +82,19 @@
 
   /** The value the selected shapes share, if they share one. */
   const shared = <K extends keyof Shape>(key: K): Shape[K] | undefined => (shapes.every((shape) => shape[key] === first[key]) ? first[key] : undefined);
+
+  /** Whether the Code switch is offered (every selected shape can be code), and how many of them are code. */
+  const codable = $derived(shapes.every(canBeCode));
+  const codeCount = $derived(shapes.filter((shape) => shape.code).length);
+  const allCode = $derived(codable && codeCount === shapes.length);
+  const language = $derived(shapes.every((shape) => shape.code?.language === first.code?.language) ? (first.code?.language ?? "") : "");
+
+  function setCode(on: boolean) {
+    apply((shape) => {
+      if (on) shape.code = shape.code ?? { language: "" };
+      else delete shape.code;
+    });
+  }
 
   function apply(change: (shape: Shape) => void) {
     shapes.forEach(change);
@@ -208,17 +223,49 @@
       />
     </label>
 
+    {#if codable}
+      <label class="dg-check">
+        <input
+          type="checkbox"
+          checked={allCode}
+          indeterminate={codeCount > 0 && !allCode}
+          onchange={(event) => setCode(event.currentTarget.checked)}
+        />
+        {t("code")}
+      </label>
+    {/if}
+    {#if allCode}
+      <label class="dg-field">
+        <span>{t("code_language")}</span>
+        <input
+          type="text"
+          list="dg-languages"
+          value={language}
+          onchange={(event) => {
+            const next = event.currentTarget.value.trim();
+            apply((shape) => (shape.code = { language: next }));
+          }}
+        />
+        <datalist id="dg-languages">
+          {#each LANGUAGES as tag (tag)}<option value={tag}></option>{/each}
+        </datalist>
+      </label>
+    {/if}
+
     <!-- Bold, italic and underline apply to the selected part of a text being edited; else to the whole text of a shape, or of a cell.
          Pressing one does not take the focus, which the editor keeps. -->
+    {#if !allCode}
     <div class="dg-group" role="group" aria-label={t("text_style")}>
       {#each EMPHASES as { key, label, glyph } (key)}
         <button type="button" class="dg-btn dg-icon dg-emphasis dg-emphasis-{key}" aria-label={label()} title={label()} aria-pressed={emphasisPressed(key)} onmousedown={(event) => event.preventDefault()} onclick={() => emphasize(key)}>{glyph}</button>
       {/each}
     </div>
+    {/if}
     {#if cellRange}
       <p class="dg-hint">{t("cells_style_hint")}</p>
     {/if}
 
+    {#if !allCode}
     <div class="dg-row">
       <div class="dg-group" role="group" aria-label={t("text_align")}>
         {#each ALIGNS as { value, label, icon } (value)}
@@ -235,6 +282,7 @@
         {/each}
       </div>
     </div>
+    {/if}
 
     {#if shapes.every((shape) => shape.type === "table")}
       <!-- The rows and columns of the tables: the value they share, or none when they differ. -->

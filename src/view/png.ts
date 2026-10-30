@@ -27,6 +27,7 @@ const PAINT_PROPERTIES = [
   "opacity",
   "font-family",
   "font-size",
+  "white-space",
   "font-style",
   "font-weight",
   "text-decoration",

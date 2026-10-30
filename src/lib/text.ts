@@ -109,10 +109,15 @@ const GAP = 4;
  * The lines of the text of a shape and where they go, in the frame of the shape. The text of an actor goes below its
  * silhouette, centered and without wrapping, as in the original; that of a custom shape goes where its placement says,
  * outside its picture without wrapping, or over it as in a rectangle. The lines keep the spans of the text, and wrap as
- * each span measures in its own bold and italic.
+ * each span measures in its own bold and italic. A code block is the exception to all of this: its lines are those of
+ * the text, plain, unwrapped and with their spaces, at the top-left inside the box, whatever its type and alignments.
  */
 export function layoutText(shape: Shape, measure: Measure): TextLayout {
   const lineHeight = shape.fontSize * LINE_HEIGHT;
+  if (shape.code) {
+    const lines = shape.text.split("\n").map((text): Span[] => (text ? [{ text, bold: false, italic: false, underline: false }] : []));
+    return { lines, x: -shape.w / 2 + PAD, y: -shape.h / 2 + PAD + shape.fontSize / 2, anchor: "start", lineHeight };
+  }
   const outside = shape.type === "actor" ? "below" : shape.type === "custom" && shape.labelPlacement !== "center" ? (shape.labelPlacement ?? "below") : null;
   if (outside) {
     const lines = paragraphsOf(spansOf(shape));
@@ -140,7 +145,7 @@ export function layoutCell(shape: Shape, row: number, col: number, measure: Meas
   const { x, y, w, h } = cellBox(shape, row, col);
   const { fontSize, bold, italic, underline, textAlign, textValign } = cellStyleOf(shape, row, col);
   const text = tableOf(shape).cells[row]?.[col] ?? "";
-  const layout = layoutText({ ...shape, type: "rect", text, textRuns: undefined, w, h, fontSize, bold, italic, underline, textAlign, textValign }, measure);
+  const layout = layoutText({ ...shape, type: "rect", code: undefined, text, textRuns: undefined, w, h, fontSize, bold, italic, underline, textAlign, textValign }, measure);
   return { ...layout, x: layout.x + x, y: layout.y + y };
 }
 

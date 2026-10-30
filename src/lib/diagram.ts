@@ -4,6 +4,7 @@
 // The model is the whole one of the spec, so that what later versions store is read back without loss.
 
 import { endOf, layoutArrows, startOf } from "./arrows.ts";
+import { canBeCode } from "./code.ts";
 import { type Endpoint, isAttached, type Outlined, type Point } from "./geometry.ts";
 import { baseOf, EMPHASES, fromSpans, type SpanStyle, spansOf, type TextRun } from "./richtext.ts";
 
@@ -129,8 +130,18 @@ export interface Shape {
    * absent when the whole text has the style of the shape. The text of a table cell or of an arrow label has none.
    */
   textRuns?: TextRun[];
+  /**
+   * The text is shown as a block of code: in a monospace font, its spaces kept, without wrapping, from the top left.
+   * Absent, the text is normal. Never on a table or an image. Its bold, italic, underline and runs are kept, but not shown.
+   */
+  code?: CodeBlock;
   /** A table: the style of each cell, by row then column, as many as `cells`; `{}` is a cell that follows the table. */
   cellStyles?: CellStyle[][];
+}
+
+/** The code block of a shape: its language, a free tag such as "bash" or "json", possibly empty. */
+export interface CodeBlock {
+  language: string;
 }
 
 /** The style of a table cell's background and text; a key that is absent follows the table. The background is a key of `COLORS`, and the text color goes with it as for a shape. */
@@ -371,6 +382,7 @@ function readShape(value: unknown): Shape | null {
     ...(value.italic === true ? { italic: true } : {}),
     ...(value.underline === true ? { underline: true } : {}),
     ...readTextRuns(value.textRuns, text, own),
+    ...(canBeCode(shape) && isRecord(value.code) && typeof value.code.language === "string" ? { code: { language: value.code.language } } : {}),
     ...(shape.type === "rect" ? { cornerRadius: isNumber(value.cornerRadius) && value.cornerRadius >= 0 ? value.cornerRadius : CORNER_RADIUS } : {}),
     ...(shape.type === "image" && isText(value.imageKey) ? { imageKey: value.imageKey } : {}),
     ...(shape.type === "custom" ? readCustom(value) : {}),

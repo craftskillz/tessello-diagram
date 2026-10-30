@@ -345,3 +345,61 @@ test("outside editing, the emphasis buttons act on the whole text and erase the 
   assert.deepEqual(shape.textRuns, [{ start: 6, end: 10, italic: true }]);
   assert.deepEqual(await drawn(page, "font-weight"), []);
 });
+
+test("a fenced text makes a code block, edited with Enter, Tab and Ctrl+Enter, and the panel switches it off and on", async () => {
+  const opened = await openView();
+  const { page, host } = opened;
+  await newDiagram(opened, "Code");
+  await addRectangle(opened, 0, 0, "x");
+
+  // The Markdown shortcut: the fences go, the language stays, the indentation is kept.
+  await page.getByRole("img", { name: "Rectangle x", exact: true }).dblclick();
+  await page.keyboard.type("```bash");
+  await page.keyboard.press("Shift+Enter");
+  await page.keyboard.type("  ls  -la");
+  await page.keyboard.press("Shift+Enter");
+  await page.keyboard.type("```");
+  await saved(host, () => page.keyboard.press("Enter"));
+  let [shape] = (await storedDiagram(host)).shapes;
+  assert.equal(shape.text, "  ls  -la");
+  assert.deepEqual(shape.code, { language: "bash" });
+
+  const drawn = page.locator("text.dg-code");
+  assert.match(await drawn.evaluate((node) => getComputedStyle(node).fontFamily), /mono/i);
+  assert.equal(await drawn.locator("tspan").first().textContent(), "  ls  -la");
+  await page.locator("text.dg-code-language", { hasText: "bash" }).waitFor();
+  await reload(page);
+  await page.locator("text.dg-code-language", { hasText: "bash" }).waitFor();
+
+  // In the editor, Enter adds a line, Tab two spaces and Ctrl/Cmd+Enter applies; Escape abandons.
+  await page.locator("[data-type=rect]").first().dblclick();
+  const editor = page.getByRole("textbox", { name: "Text of the shape" });
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Tab");
+  await page.keyboard.type("pwd");
+  await saved(host, () => page.keyboard.press("ControlOrMeta+Enter"));
+  assert.equal((await storedDiagram(host)).shapes[0].text, "  ls  -la\n  pwd");
+
+  await page.locator("[data-type=rect]").first().dblclick();
+  await page.keyboard.type("lost");
+  await page.keyboard.press("Escape");
+  await editor.waitFor({ state: "detached" });
+  assert.equal((await storedDiagram(host)).shapes[0].text, "  ls  -la\n  pwd");
+
+  // The panel: B/I/U are hidden while Code is on; unticking it keeps the text, ticking it back and typing a language sets it.
+  await page.locator("[data-type=rect]").first().click();
+  const code = page.getByRole("checkbox", { name: "Code", exact: true });
+  assert.equal(await code.isChecked(), true);
+  assert.equal(await page.getByRole("button", { name: "Bold", exact: true }).count(), 0);
+  await saved(host, () => code.uncheck());
+  [shape] = (await storedDiagram(host)).shapes;
+  assert.equal(shape.code, undefined);
+  assert.equal(shape.text, "  ls  -la\n  pwd");
+  await page.getByRole("button", { name: "Bold", exact: true }).waitFor();
+  await saved(host, () => code.check());
+  const language = page.getByRole("combobox", { name: "Language" }).or(page.getByRole("textbox", { name: "Language" }));
+  await language.fill("json");
+  await saved(host, () => language.press("Enter"));
+  assert.deepEqual((await storedDiagram(host)).shapes[0].code, { language: "json" });
+});

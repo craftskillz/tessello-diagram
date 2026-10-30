@@ -2,7 +2,8 @@
 // applied to other shapes or arrows. Pure functions of the model (diagram.ts), and of what the system clipboard holds: an
 // internal copy marks it, so that the last copy wins, whether it was made in the diagram or elsewhere.
 
-import { type Arrow, type Diagram, newId, nextZ, type Shape } from "./diagram.ts";
+import { type Arrow, type CodeBlock, type Diagram, newId, nextZ, type Shape } from "./diagram.ts";
+import { canBeCode } from "./code.ts";
 import { type Endpoint, isAttached } from "./geometry.ts";
 import { EMPHASES, styleWhole } from "./richtext.ts";
 
@@ -90,10 +91,11 @@ export function pasteItems(diagram: Diagram, clip: Clip, offset: number, idOf: (
 }
 
 /** A copied style: of a shape, with its size when asked, or of an arrow. It applies to what is of the same kind. A shape's
- * bold, italic and underline are part of it, whatever its type.
+ * bold, italic and underline are part of it, whatever its type. So is its code block: `code` is its language, or null for
+ * a normal text; it goes only to the shapes that can be code.
  * The corner radius is that of a rectangle, and goes only to rectangles. */
 export type Style =
-  | { kind: "shape"; values: Partial<Pick<Shape, "color" | "opacity" | "fontSize" | "textAlign" | "textValign" | "bold" | "italic" | "underline" | "w" | "h" | "cornerRadius">> }
+  | { kind: "shape"; values: Partial<Pick<Shape, "color" | "opacity" | "fontSize" | "textAlign" | "textValign" | "bold" | "italic" | "underline" | "w" | "h" | "cornerRadius">> & { code: CodeBlock | null } }
   | { kind: "arrow"; values: Pick<Arrow, "heads" | "dashed" | "width" | "color" | "labelSize" | "route"> };
 
 const isArrow = (item: Shape | Arrow): item is Arrow => "from" in item;
@@ -107,17 +109,22 @@ export function copyStyle(item: Shape | Arrow, withSize: boolean): Style {
   const { color, opacity, fontSize, textAlign, textValign, w, h } = item;
   const text = { color, opacity, fontSize, textAlign, textValign, bold: item.bold === true, italic: item.italic === true, underline: item.underline === true };
   const style = item.type === "rect" && item.cornerRadius !== undefined ? { ...text, cornerRadius: item.cornerRadius } : text;
-  return { kind: "shape", values: withSize ? { ...style, w, h } : style };
+  const values = { ...style, code: item.code ? { language: item.code.language } : null };
+  return { kind: "shape", values: withSize ? { ...values, w, h } : values };
 }
 
 /** "Paste style": applies a copied style to the shapes, or to the arrows, as it was copied from one or the other. */
 export function applyStyle(style: Style, shapes: readonly Shape[], arrows: readonly Arrow[]): void {
   if (style.kind === "arrow") return void arrows.forEach((arrow) => Object.assign(arrow, style.values));
-  const { cornerRadius, ...values } = style.values;
+  const { cornerRadius, code, ...values } = style.values;
   for (const shape of shapes) {
     Object.assign(shape, values);
     // The style goes to the whole text: the runs no longer override it.
     for (const key of EMPHASES) if (typeof values[key] === "boolean") styleWhole(shape, key, values[key]);
+    if (canBeCode(shape)) {
+      if (code) shape.code = { language: code.language };
+      else delete shape.code;
+    }
     if (shape.type === "rect" && cornerRadius !== undefined) shape.cornerRadius = cornerRadius;
   }
 }
