@@ -2,6 +2,8 @@
 // back into the runs the model stores (diagram.ts). The editor works on spans; the model keeps only the ranges that differ
 // from the style of the shape. Pure functions, with no knowledge of the DOM.
 
+import type { TokenKind } from "./syntax.ts";
+
 export const EMPHASES = ["bold", "italic", "underline"] as const;
 export type Emphasis = (typeof EMPHASES)[number];
 
@@ -23,6 +25,8 @@ export type SpanStyle = Record<Emphasis, boolean>;
 /** A piece of text with its resolved style. */
 export interface Span extends SpanStyle {
   text: string;
+  /** The kind of code token the span is, in a code block; absent for plain text. */
+  token?: TokenKind;
 }
 
 /** The part of a shape these functions read: its text, its runs, and its own style (absent is off). */

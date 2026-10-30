@@ -12,6 +12,7 @@
   import { t } from "../lib/i18n.ts";
   import { type CellRange, cellBox, cellStyleOf, columnEdges, inRange, rowEdges, tableOf } from "../lib/table.ts";
   import type { Span } from "../lib/richtext.ts";
+  import { tokenCss } from "../lib/syntax.ts";
   import { layoutCell, layoutText, type Measure } from "../lib/text.ts";
 
   let {
@@ -155,7 +156,7 @@
     </g>
   {/if}
   <!-- The spans of a line, each in its own bold, italic and underline. -->
-  {#snippet spans(line: Span[])}{#each line as span}<tspan font-weight={span.bold ? "bold" : undefined} font-style={span.italic ? "italic" : undefined} text-decoration={span.underline ? "underline" : undefined}>{span.text}</tspan>{/each}{/snippet}
+  {#snippet spans(line: Span[])}{#each line as span}<tspan font-weight={span.bold ? "bold" : undefined} font-style={span.italic ? "italic" : undefined} text-decoration={span.underline ? "underline" : undefined} style:fill={span.token ? tokenCss(span.token) : undefined}>{span.text}</tspan>{/each}{/snippet}
   {#if grid}
     {#each grid.cells as { row, col, style, layout } (`${row}/${col}`)}
       {#if layout && !(editingCell?.row === row && editingCell?.col === col)}

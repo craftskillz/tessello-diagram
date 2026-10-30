@@ -5,6 +5,7 @@ import { layoutArrows, pointAlong } from "../src/lib/arrows.ts";
 import { COLORS, type Diagram, newArrow, newDiagram, newShape } from "../src/lib/diagram.ts";
 import { fileNameOf, toDrawio } from "../src/lib/drawio.ts";
 import type { ShapeLibrary } from "../src/lib/library.ts";
+import { tokenHex } from "../src/lib/syntax.ts";
 
 /** The attributes of the cell of an id, and what it holds, read from the XML with a pattern: Node has no DOMParser. */
 function cellOf(xml: string, id: string): { attributes: Record<string, string>; inner: string } {
@@ -429,7 +430,7 @@ describe("the name of an exported file", () => {
 describe("converting a code block to draw.io", () => {
   const exported = (more: object, id = "k") => {
     const diagram = newDiagram("d1", "Code", 0);
-    diagram.shapes = [{ ...newShape(id, { x: 0, y: 0 }, 0), text: "if a < b:\n    run  & go", code: { language: "bash" }, ...more }];
+    diagram.shapes = [{ ...newShape(id, { x: 0, y: 0 }, 0), text: "if a < b:\n    run  & go", code: { language: "text" }, ...more }];
     const { xml } = convert(diagram);
     const { attributes } = cellOf(xml, id);
     return { value: attributes.value, style: parseStyle(attributes.style) };
@@ -437,6 +438,27 @@ describe("converting a code block to draw.io", () => {
 
   test("writes every space as &nbsp; and the lines as <br>, escaped", () => {
     assert.equal(exported({}).value, "if&amp;nbsp;a&amp;nbsp;&amp;lt;&amp;nbsp;b:&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;run&amp;nbsp;&amp;nbsp;&amp;amp;&amp;nbsp;go");
+  });
+
+  const decoded = (value: string) => value.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
+
+  test("colours the tokens of its language with a font per token, in the light colours of its palette", () => {
+    const text = "#1e40af";
+    const fill = "#dbeafe";
+    const { value } = exported({ color: "c-blue", text: "if a:\n    go", code: { language: "bash" } });
+    assert.equal(decoded(value), `<font color="${tokenHex("keyword", text, fill)}">if</font>&nbsp;a:<br>&nbsp;&nbsp;&nbsp;&nbsp;go`);
+  });
+
+  test("colours a key of json, escaped, and leaves plain text uncoloured", () => {
+    const text = "#292524";
+    const fill = "#f5f5f4";
+    const { value } = exported({ color: "c-gray", text: '{"a": 1}', code: { language: "json" } });
+    assert.match(decoded(value), new RegExp(`<font color="${tokenHex("key", text, fill)}">"a"</font>`));
+  });
+
+  test("exports no font for an unknown language", () => {
+    const { value } = exported({ code: { language: "nope" } });
+    assert.ok(!value.includes("font"));
   });
 
   test("is monospace, left and top, not wrapped, clipped, with no font style", () => {

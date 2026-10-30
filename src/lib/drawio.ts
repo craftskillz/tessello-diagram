@@ -9,6 +9,7 @@ import { cornerRadiusOf, degrees, type Endpoint, isAttached, lidOf, type Outline
 import { outlineOf, pictureKeyOf, type ShapeLibrary } from "./library.ts";
 import { boundsOf } from "./placement.ts";
 import { spansOf } from "./richtext.ts";
+import { highlight, tokenHex } from "./syntax.ts";
 import { cellStyleOf, columnEdges, rowEdges, tableOf } from "./table.ts";
 
 /** The colors of each key of the palette, in its light variant (base.css): fill, outline and text. */
@@ -61,11 +62,24 @@ const richHtml = (shape: Shape): string => {
     .join("");
 };
 
-/** The HTML of a code block: its text plain, every space a `&nbsp;` so that draw.io keeps them, its lines kept. */
-const codeHtml = (text: string): string => html(text).replace(/ /g, "&nbsp;");
+/**
+ * The HTML of a code block: its text escaped, every space a `&nbsp;` so that draw.io keeps them, its lines kept as `<br>`,
+ * and every token with a kind in a `<font color>` of the light colours of the shape. A language unknown stays plain.
+ */
+const codeHtml = (text: string, language: string, colors: { fill: string; text: string }): string =>
+  highlight(text, language)
+    .map((line) =>
+      line
+        .map((token) => {
+          const inner = html(token.text).replace(/ /g, "&nbsp;");
+          return token.kind ? `<font color="${tokenHex(token.kind, colors.text, colors.fill)}">${inner}</font>` : inner;
+        })
+        .join(""),
+    )
+    .join("<br>");
 
-/** The HTML of the text a shape shows: a code block plain with its spaces, a text with runs in its tags, else as `html`. */
-const labelHtml = (shape: Shape, text: string): string => (shape.code ? codeHtml(text) : shape.textRuns?.length && text === shape.text ? richHtml(shape) : html(text));
+/** The HTML of the text a shape shows: a code block coloured by token, a text with runs in its tags, else as `html`. */
+const labelHtml = (shape: Shape, text: string): string => (shape.code ? codeHtml(text, shape.code.language, PALETTE[shape.color] ?? PALETTE["c-gray"]) : shape.textRuns?.length && text === shape.text ? richHtml(shape) : html(text));
 
 const styleOf = (parts: readonly string[]): string => `${parts.join(";")};`;
 

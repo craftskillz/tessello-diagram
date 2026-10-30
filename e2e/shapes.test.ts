@@ -403,3 +403,36 @@ test("a fenced text makes a code block, edited with Enter, Tab and Ctrl+Enter, a
   await saved(host, () => language.press("Enter"));
   assert.deepEqual((await storedDiagram(host)).shapes[0].code, { language: "json" });
 });
+
+test("a code block colours its text by its language, and an unknown language leaves it plain", async () => {
+  const opened = await openView();
+  const { page, host } = opened;
+  await newDiagram(opened, "Colours");
+  await addRectangle(opened, 0, 0, "x");
+  await page.getByRole("img", { name: "Rectangle x", exact: true }).dblclick();
+  await page.keyboard.type("```json");
+  await page.keyboard.press("Shift+Enter");
+  await page.keyboard.type('{"a": 1}');
+  await page.keyboard.press("Shift+Enter");
+  await page.keyboard.type("```");
+  await saved(host, () => page.keyboard.press("Enter"));
+
+  const fills = () => page.locator("text.dg-code tspan tspan").evaluateAll((nodes) => nodes.map((node) => ({ text: node.textContent, fill: getComputedStyle(node).fill })));
+  await page.locator("text.dg-code tspan[style*=fill]").first().waitFor();
+  const coloured = await fills();
+  const textColour = await page.locator("text.dg-code").evaluate((node) => getComputedStyle(node).fill);
+  assert.equal(coloured.map((span) => span.text).join(""), '{"a": 1}');
+  const key = coloured.find((span) => span.text === '"a"');
+  const number = coloured.find((span) => span.text === "1");
+  assert.ok(key && number);
+  assert.notEqual(key.fill, textColour);
+  assert.notEqual(number.fill, textColour);
+  assert.notEqual(key.fill, number.fill);
+
+  await page.locator("[data-type=rect]").first().click();
+  const language = page.getByRole("combobox", { name: "Language" }).or(page.getByRole("textbox", { name: "Language" }));
+  await language.fill("brainfuck");
+  await saved(host, () => language.press("Enter"));
+  await page.waitForFunction(() => document.querySelectorAll("text.dg-code tspan[style*=fill]").length === 0);
+  assert.equal(await page.locator("text.dg-code").textContent().then((text) => text?.includes('{"a": 1}')), true);
+});

@@ -3,6 +3,7 @@
 
 import type { Shape } from "./diagram.ts";
 import { sameStyle, type Span, spansOf } from "./richtext.ts";
+import { highlight } from "./syntax.ts";
 import { cellBox, cellStyleOf, tableOf } from "./table.ts";
 
 /** The space between the text and the box of its shape. */
@@ -110,12 +111,15 @@ const GAP = 4;
  * silhouette, centered and without wrapping, as in the original; that of a custom shape goes where its placement says,
  * outside its picture without wrapping, or over it as in a rectangle. The lines keep the spans of the text, and wrap as
  * each span measures in its own bold and italic. A code block is the exception to all of this: its lines are those of
- * the text, plain, unwrapped and with their spaces, at the top-left inside the box, whatever its type and alignments.
+ * the text, unwrapped and with their spaces, at the top-left inside the box, whatever its type and alignments. Their
+ * spans carry the kind of token of the language (`token`), which only colours them: it changes no measure and no position.
  */
 export function layoutText(shape: Shape, measure: Measure): TextLayout {
   const lineHeight = shape.fontSize * LINE_HEIGHT;
   if (shape.code) {
-    const lines = shape.text.split("\n").map((text): Span[] => (text ? [{ text, bold: false, italic: false, underline: false }] : []));
+    const lines = highlight(shape.text, shape.code.language).map((tokens): Span[] =>
+      tokens.map(({ text, kind }) => ({ text, bold: false, italic: false, underline: false, ...(kind ? { token: kind } : {}) })),
+    );
     return { lines, x: -shape.w / 2 + PAD, y: -shape.h / 2 + PAD + shape.fontSize / 2, anchor: "start", lineHeight };
   }
   const outside = shape.type === "actor" ? "below" : shape.type === "custom" && shape.labelPlacement !== "center" ? (shape.labelPlacement ?? "below") : null;

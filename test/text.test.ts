@@ -123,7 +123,7 @@ describe("the text of a code block", () => {
     const layout = layoutText(code("if x:\n    y  =  1\n\nend"), measure);
     assert.deepEqual(plain(layout.lines), ["if x:", "    y  =  1", "", "end"]);
     assert.deepEqual(layout.lines[2], []);
-    assert.deepEqual(layout.lines[1], [{ text: "    y  =  1", bold: false, italic: false, underline: false }]);
+    assert.equal(layout.lines[1].map((span) => span.text).join(""), "    y  =  1");
   });
 
   test("sits at the top-left, whatever the alignments", () => {
@@ -137,8 +137,26 @@ describe("the text of a code block", () => {
     const shape = code("abcdef", { bold: true, italic: true, underline: true, textRuns: [{ start: 0, end: 3, bold: false }] });
     const before = structuredClone(shape);
     const layout = layoutText(shape, measure);
-    assert.deepEqual(layout.lines, [[{ text: "abcdef", bold: false, italic: false, underline: false }]]);
+    assert.equal(layout.lines[0].map((span) => span.text).join(""), "abcdef");
+    assert.ok(layout.lines[0].every((span) => !span.bold && !span.italic && !span.underline));
     assert.deepEqual(shape, before);
+  });
+
+  test("cuts the lines of a known language into spans with the kind of token, joining back to the line", () => {
+    const layout = layoutText(code('{"a": 1}\n\n', { code: { language: "json" } }), measure);
+    assert.equal(layout.lines[0].map((span) => span.text).join(""), '{"a": 1}');
+    assert.deepEqual(layout.lines[1], []);
+    assert.ok(layout.lines[0].some((span) => span.token === "key"));
+    assert.ok(layout.lines[0].some((span) => span.token === "number"));
+    assert.ok(layout.lines[0].every((span) => !span.bold && !span.italic && !span.underline));
+    assert.deepEqual([layout.x, layout.y, layout.anchor], [-42, -17, "start"]);
+  });
+
+  test("keeps plain spans, without token, for an unknown or empty language", () => {
+    for (const language of ["brainfuck", ""]) {
+      const layout = layoutText(code("echo  hi", { code: { language } }), measure);
+      assert.deepEqual(layout.lines, [[{ text: "echo  hi", bold: false, italic: false, underline: false }]]);
+    }
   });
 
   test("sits inside the box for an actor or a custom shape with an outside label", () => {
