@@ -40,6 +40,14 @@ describe("the creation defaults read from the storage", () => {
     assert.equal(readDefaults(null).shapes.postit.color, "c-amber");
   });
 
+  test("white and black are colors a stored default may take, and the factory colors do not change", () => {
+    const defaults = readDefaults({ arrows: { color: "c-black" }, shapes: { rect: { w: 200, h: 10, fontSize: 72, color: "c-white" } } });
+    assert.equal(defaults.arrows.color, "c-black");
+    assert.equal(defaults.shapes.rect.color, "c-white");
+    assert.equal(readDefaults(null).arrows.color, "c-slate");
+    assert.equal(readDefaults(null).shapes.postit.color, "c-amber");
+  });
+
   test("a value that is not defaults at all is the factory values", () => {
     for (const value of ["defaults", [1, 2], { arrows: null, shapes: [] }]) assert.deepEqual(readDefaults(value), readDefaults(null));
   });

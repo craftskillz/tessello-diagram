@@ -16,7 +16,7 @@ export type BuiltInType = (typeof BUILT_IN_TYPES)[number];
 
 /** The palette of the living-documentation editor, by key: the colors of each key are in base.css, in a light and a dark variant. */
 export const COLORS = [
-  "c-gray", "c-slate", "c-blue", "c-sky", "c-cyan", "c-teal", "c-green", "c-lime",
+  "c-white", "c-black", "c-gray", "c-slate", "c-blue", "c-sky", "c-cyan", "c-teal", "c-green", "c-lime",
   "c-yellow", "c-amber", "c-orange", "c-red", "c-rose", "c-pink", "c-purple", "c-indigo",
 ] as const;
 

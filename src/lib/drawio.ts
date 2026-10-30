@@ -13,6 +13,8 @@ import { cellStyleOf, columnEdges, rowEdges, tableOf } from "./table.ts";
 
 /** The colors of each key of the palette, in its light variant (base.css): fill, outline and text. */
 const PALETTE: Record<string, { fill: string; stroke: string; text: string }> = {
+  "c-white": { fill: "#ffffff", stroke: "#a8a29e", text: "#1c1917" },
+  "c-black": { fill: "#000000", stroke: "#000000", text: "#ffffff" },
   "c-gray": { fill: "#f5f5f4", stroke: "#a8a29e", text: "#292524" },
   "c-slate": { fill: "#f1f5f9", stroke: "#64748b", text: "#0f172a" },
   "c-blue": { fill: "#dbeafe", stroke: "#3b82f6", text: "#1e40af" },
