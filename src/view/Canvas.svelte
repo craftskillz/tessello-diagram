@@ -846,7 +846,9 @@
     if (event.key === " ") spaceHeld = false;
   }
 
-  // ── Text of a shape or label of an arrow: Enter applies (Ctrl/Cmd+Enter too; in a code block Enter adds a line), Shift+Enter adds a line, Escape abandons, leaving the field applies ──
+  // ── Text of a shape or label of an arrow ──
+  // Enter applies (Ctrl/Cmd+Enter too; in a code block Enter adds a line), Shift+Enter adds a line, Escape abandons,
+  // leaving the field applies.
   // The text of a table is that of a cell: the one given, or its first by default, as for the panel's "Edit text".
   function startEditing(id: string, cell?: { row: number; col: number }) {
     const shape = shapes.get(id);
@@ -915,7 +917,10 @@
   /** The selection of the editor of a shape's text, while there is one, for the panel. */
   let textSelection = $state<TextSelection | null>(null);
 
-  /** Applies the text, and its runs, of the shape being edited: one undo step, none when nothing changed. A fenced text (```lang … ```) makes the shape a code block, the fences removed and the runs dropped. */
+  /**
+   * Applies the text, and its runs, of the shape being edited: one undo step, none when nothing changed. A fenced text
+   * (```lang … ```) makes the shape a code block, the fences removed and the runs dropped.
+   */
   function applyRichText({ text, textRuns }: { text: string; textRuns?: TextRun[] }) {
     const shape = editedShape;
     editing = null;

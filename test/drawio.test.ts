@@ -231,6 +231,12 @@ describe("converting a diagram to draw.io", () => {
     assert.equal(convert(diagram).droppedRotations, 1);
   });
 
+  test("a code block shows no text rotation, so a rotation stored on it is not counted as lost", () => {
+    const diagram = newDiagram("d1", "Code", 0);
+    diagram.shapes = [{ ...newShape("c1", { x: 0, y: 0 }, 0), textRotation: 30, code: { language: "" } }, { ...newShape("s1", { x: 0, y: 200 }, 1), textRotation: 30 }];
+    assert.equal(convert(diagram).droppedRotations, 1);
+  });
+
   test("a table is a draw.io table with a row per row and a cell per cell, placed within it, with their texts", () => {
     const diagram = newDiagram("d1", "Tables", 0);
     diagram.shapes = [

@@ -177,7 +177,7 @@
       <clipPath id={clipId}><rect x={-w / 2} y={-h / 2} width={w} height={h} /></clipPath>
     {/if}
     <g clip-path={shape.code ? `url(#${clipId})` : undefined}>
-      <text class:dg-code={!!shape.code} font-size={shape.fontSize} text-anchor={text.anchor} dominant-baseline="central" transform="rotate({shape.textRotation})">
+      <text class:dg-code={!!shape.code} font-size={shape.fontSize} text-anchor={text.anchor} dominant-baseline="central" transform={shape.code ? undefined : `rotate(${shape.textRotation})`}>
         {#each text.lines as line, index}
           <tspan x={text.x} y={text.y + index * text.lineHeight}>{@render spans(line)}</tspan>
         {/each}

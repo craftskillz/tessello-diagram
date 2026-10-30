@@ -436,3 +436,53 @@ test("a code block colours its text by its language, and an unknown language lea
   await page.waitForFunction(() => document.querySelectorAll("text.dg-code tspan[style*=fill]").length === 0);
   assert.equal(await page.locator("text.dg-code").textContent().then((text) => text?.includes('{"a": 1}')), true);
 });
+
+test("in a code block, a paste stays plain text with its spaces and a click outside the shape applies the text", async () => {
+  const opened = await openView();
+  const { page, host } = opened;
+  await newDiagram(opened, "Paste");
+  await addRectangle(opened, 0, 0, "x");
+  await page.locator("[data-type=rect]").first().click();
+  await saved(host, () => page.getByRole("checkbox", { name: "Code", exact: true }).check());
+
+  await page.locator("[data-type=rect]").first().dblclick();
+  const editor = page.getByRole("textbox", { name: "Text of the shape" });
+  await page.keyboard.press("End");
+  await editor.evaluate((node) => {
+    const data = new DataTransfer();
+    data.setData("text/plain", "\n  a:  1\n    b");
+    data.setData("text/html", "<b>bold</b><p>html</p>");
+    node.dispatchEvent(new InputEvent("beforeinput", { inputType: "insertFromPaste", dataTransfer: data, bubbles: true, cancelable: true }));
+  });
+  const outside = await at(page, 350, 250);
+  await saved(host, () => page.mouse.click(outside.x, outside.y));
+  const [shape] = (await storedDiagram(host)).shapes;
+  assert.equal(shape.text, "x\n  a:  1\n    b");
+  assert.equal(shape.textRuns, undefined);
+  assert.deepEqual(shape.code, { language: "" });
+});
+
+test("a code block ignores the rotation of its text, and the Code switch acts on the shapes that can be code of a mixed selection", async () => {
+  const opened = await openView();
+  const { page, host } = opened;
+  await newDiagram(opened, "Mixed");
+  await addRectangle(opened, -300, 0, "code");
+  await tool(page, "Table");
+  const spot = await at(page, 300, 0);
+  await page.mouse.dblclick(spot.x, spot.y);
+  await page.getByRole("textbox", { name: "Cell 1, 1" }).press("Escape");
+  await until(async () => (await storedDiagram(host)).shapes.length === 2, "both shapes to be stored");
+
+  await page.locator("[data-type=rect]").first().click();
+  await saved(host, () => page.getByRole("button", { name: "Rotate the text right by 10°" }).click());
+  await page.keyboard.press("ControlOrMeta+a");
+  const code = page.getByRole("checkbox", { name: "Code", exact: true });
+  await saved(host, () => code.check());
+  const shapes = (await storedDiagram(host)).shapes;
+  assert.deepEqual(shapes.map((shape) => [shape.type, shape.code !== undefined]).sort(), [["rect", true], ["table", false]]);
+
+  await page.locator("[data-type=rect]").first().click();
+  assert.equal(await page.getByRole("button", { name: "Rotate the text right by 10°" }).count(), 0);
+  assert.equal(await page.locator("text.dg-code").getAttribute("transform"), null);
+  assert.equal((await storedDiagram(host)).shapes.find((shape) => shape.type === "rect")?.textRotation, 10);
+});

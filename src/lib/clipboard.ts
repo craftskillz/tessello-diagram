@@ -2,8 +2,8 @@
 // applied to other shapes or arrows. Pure functions of the model (diagram.ts), and of what the system clipboard holds: an
 // internal copy marks it, so that the last copy wins, whether it was made in the diagram or elsewhere.
 
-import { type Arrow, type CodeBlock, type Diagram, newId, nextZ, type Shape } from "./diagram.ts";
 import { canBeCode } from "./code.ts";
+import { type Arrow, type CodeBlock, type Diagram, newId, nextZ, type Shape } from "./diagram.ts";
 import { type Endpoint, isAttached } from "./geometry.ts";
 import { EMPHASES, styleWhole } from "./richtext.ts";
 

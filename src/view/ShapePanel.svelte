@@ -9,8 +9,8 @@
   // default of its type. A "Code" switch shows the text of the selected shapes as a code block (all but tables and images),
   // with a language field; while all are code, the emphasis and alignment controls are hidden. The panel is docked beside the canvas, so that it never hides the drawing.
   import { isBuiltIn, shapeAsDefault } from "../lib/defaults.ts";
-  import { type CellStyle, clampFontSize, COLORS, CORNER_RADIUS, FONT_SIZES, groupShapes, LABEL_PLACEMENTS, type LabelPlacement, reorder, type Shape, ungroupShapes } from "../lib/diagram.ts";
   import { canBeCode, LANGUAGES } from "../lib/code.ts";
+  import { type CellStyle, clampFontSize, COLORS, CORNER_RADIUS, FONT_SIZES, groupShapes, LABEL_PLACEMENTS, type LabelPlacement, reorder, type Shape, ungroupShapes } from "../lib/diagram.ts";
   import { degrees } from "../lib/geometry.ts";
   import { type Emphasis, styleWhole, wholeStyle } from "../lib/richtext.ts";
   import { type CellRange, MAX_CELLS, setColumnCount, setRowCount, sharedCellStyle, styleCells, styleTable, tableOf, wholeRange } from "../lib/table.ts";
@@ -83,14 +83,21 @@
   /** The value the selected shapes share, if they share one. */
   const shared = <K extends keyof Shape>(key: K): Shape[K] | undefined => (shapes.every((shape) => shape[key] === first[key]) ? first[key] : undefined);
 
-  /** Whether the Code switch is offered (every selected shape can be code), and how many of them are code. */
-  const codable = $derived(shapes.every(canBeCode));
-  const codeCount = $derived(shapes.filter((shape) => shape.code).length);
-  const allCode = $derived(codable && codeCount === shapes.length);
-  const language = $derived(shapes.every((shape) => shape.code?.language === first.code?.language) ? (first.code?.language ?? "") : "");
+  /** The shapes the Code switch acts on (all but tables and images); it is offered when there is one, and the others are left alone. */
+  const eligible = $derived(shapes.filter(canBeCode));
+  const codable = $derived(eligible.length > 0);
+  const codeCount = $derived(eligible.filter((shape) => shape.code).length);
+  const allCode = $derived(codable && codeCount === eligible.length);
+  const language = $derived(eligible.every((shape) => shape.code?.language === eligible[0]?.code?.language) ? (eligible[0]?.code?.language ?? "") : "");
+  /** The emphasis and alignment controls are hidden when every shape that carries a text style (all but images) is code; a table keeps them. */
+  const textCarriers = $derived(shapes.filter((shape) => shape.type !== "image"));
+  const allCodeText = $derived(textCarriers.length > 0 && textCarriers.every((shape) => shape.code));
+  /** The text rotation is hidden when no selected shape shows a turned text: a table's and a code block's never turn. */
+  const rotatable = $derived(!shapes.every((shape) => shape.type === "table" || shape.code));
 
   function setCode(on: boolean) {
     apply((shape) => {
+      if (!canBeCode(shape)) return;
       if (on) shape.code = shape.code ?? { language: "" };
       else delete shape.code;
     });
@@ -243,7 +250,7 @@
           value={language}
           onchange={(event) => {
             const next = event.currentTarget.value.trim();
-            apply((shape) => (shape.code = { language: next }));
+            apply((shape) => canBeCode(shape) && (shape.code = { language: next }));
           }}
         />
         <datalist id="dg-languages">
@@ -254,34 +261,34 @@
 
     <!-- Bold, italic and underline apply to the selected part of a text being edited; else to the whole text of a shape, or of a cell.
          Pressing one does not take the focus, which the editor keeps. -->
-    {#if !allCode}
-    <div class="dg-group" role="group" aria-label={t("text_style")}>
-      {#each EMPHASES as { key, label, glyph } (key)}
-        <button type="button" class="dg-btn dg-icon dg-emphasis dg-emphasis-{key}" aria-label={label()} title={label()} aria-pressed={emphasisPressed(key)} onmousedown={(event) => event.preventDefault()} onclick={() => emphasize(key)}>{glyph}</button>
-      {/each}
-    </div>
+    {#if !allCodeText}
+      <div class="dg-group" role="group" aria-label={t("text_style")}>
+        {#each EMPHASES as { key, label, glyph } (key)}
+          <button type="button" class="dg-btn dg-icon dg-emphasis dg-emphasis-{key}" aria-label={label()} title={label()} aria-pressed={emphasisPressed(key)} onmousedown={(event) => event.preventDefault()} onclick={() => emphasize(key)}>{glyph}</button>
+        {/each}
+      </div>
     {/if}
     {#if cellRange}
       <p class="dg-hint">{t("cells_style_hint")}</p>
     {/if}
 
-    {#if !allCode}
-    <div class="dg-row">
-      <div class="dg-group" role="group" aria-label={t("text_align")}>
-        {#each ALIGNS as { value, label, icon } (value)}
-          <button type="button" class="dg-btn dg-icon" aria-label={label()} title={label()} aria-pressed={styled("textAlign") === value} onclick={() => style({ textAlign: value })}>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d={icon} /></svg>
-          </button>
-        {/each}
+    {#if !allCodeText}
+      <div class="dg-row">
+        <div class="dg-group" role="group" aria-label={t("text_align")}>
+          {#each ALIGNS as { value, label, icon } (value)}
+            <button type="button" class="dg-btn dg-icon" aria-label={label()} title={label()} aria-pressed={styled("textAlign") === value} onclick={() => style({ textAlign: value })}>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d={icon} /></svg>
+            </button>
+          {/each}
+        </div>
+        <div class="dg-group" role="group" aria-label={t("text_valign")}>
+          {#each VALIGNS as { value, label, icon } (value)}
+            <button type="button" class="dg-btn dg-icon" aria-label={label()} title={label()} aria-pressed={styled("textValign") === value} onclick={() => style({ textValign: value })}>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d={icon} /></svg>
+            </button>
+          {/each}
+        </div>
       </div>
-      <div class="dg-group" role="group" aria-label={t("text_valign")}>
-        {#each VALIGNS as { value, label, icon } (value)}
-          <button type="button" class="dg-btn dg-icon" aria-label={label()} title={label()} aria-pressed={styled("textValign") === value} onclick={() => style({ textValign: value })}>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d={icon} /></svg>
-          </button>
-        {/each}
-      </div>
-    </div>
     {/if}
 
     {#if shapes.every((shape) => shape.type === "table")}
@@ -322,8 +329,8 @@
       <button type="button" class="dg-btn" aria-label={t("rotate_left")} title={t("rotate_left")} onclick={() => apply((shape) => (shape.rotation = degrees(shape.rotation - 10)))}>↺ 10°</button>
       <button type="button" class="dg-btn" aria-label={t("rotate_right")} title={t("rotate_right")} onclick={() => apply((shape) => (shape.rotation = degrees(shape.rotation + 10)))}>↻ 10°</button>
     </div>
-    <!-- A table's text turns with the table only. -->
-    {#if !shapes.every((shape) => shape.type === "table")}
+    <!-- A table's text turns with the table only, and a code block's does not turn. -->
+    {#if rotatable}
       <div class="dg-row">
         <span class="dg-label">{t("text_rotation")}</span>
         <button type="button" class="dg-btn" aria-label={t("rotate_text_left")} title={t("rotate_text_left")} onclick={() => apply((shape) => (shape.textRotation = degrees(shape.textRotation - 10)))}>↺ 10°</button>
