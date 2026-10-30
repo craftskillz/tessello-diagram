@@ -21,6 +21,7 @@
   import ArrowPanel from "./ArrowPanel.svelte";
   import ArrowView from "./ArrowView.svelte";
   import { exportPng } from "./exports.ts";
+  import ImageCaptionDialog from "./ImageCaptionDialog.svelte";
   import ShapePanel from "./ShapePanel.svelte";
   import ShapeView from "./ShapeView.svelte";
   import TextEditor, { type TextSelection } from "./TextEditor.svelte";
@@ -52,6 +53,8 @@
   /** The file chooser of the Image tool, and where the image chosen will be placed. */
   let picker = $state<HTMLInputElement>();
   let pickedAt: Point = { x: 0, y: 0 };
+  /** The image waiting for the answer of the caption dialog: nothing is stored before it. */
+  let captioning = $state<{ file: Blob; caption: string; at: Point } | null>(null);
   /** The canvas shows the drawing moved by `pan` (in pixels of the screen) and scaled by `zoom`. */
   let pan = $state({ x: 0, y: 0 });
   let zoom = $state(1);
@@ -787,15 +790,16 @@
 
   /**
    * Ctrl/Cmd+V: unless the system clipboard is marked by a copy of the diagram, an image it holds is placed in the
-   * middle of the view, captioned "image"; otherwise what Ctrl/Cmd+C copied is pasted. Only the `paste` event tells
-   * what the system clipboard holds.
+   * middle of the view once the caption dialog is answered (a second image is ignored while it is open); otherwise
+   * what Ctrl/Cmd+C copied is pasted. Only the `paste` event tells what the system clipboard holds.
    */
   function onPaste(event: ClipboardEvent) {
     if (typing(event)) return;
     const file = imageToPaste(event.clipboardData);
     if (file) {
       event.preventDefault();
-      return void insertImage(file, captionOf(""), viewCenter());
+      if (!captioning) captioning = { file, caption: captionOf(""), at: viewCenter() };
+      return;
     }
     if (!ui.clip?.shapes.length && !ui.clip?.arrows.length) return;
     event.preventDefault();
@@ -810,7 +814,7 @@
   function onPicked(event: Event & { currentTarget: HTMLInputElement }) {
     const file = event.currentTarget.files?.[0];
     event.currentTarget.value = "";
-    if (file) void insertImage(file, captionOf(file.name), pickedAt);
+    if (file) captioning = { file, caption: captionOf(file.name), at: pickedAt };
   }
 
   /** "Copy style": the style of the first selected shape, else of the first selected arrow. */
@@ -1439,6 +1443,10 @@
     <button type="button" class="dg-btn" title={t("zoom_fit_hint")} onclick={fit}>{t("zoom_fit")}</button>
   </div>
 </div>
+
+{#if captioning}
+  <ImageCaptionDialog request={captioning} onClose={() => (captioning = null)} />
+{/if}
 
 {#if selectedShapes.length || selectedArrows.length}
   <div class="dg-drawer" transition:drawer>

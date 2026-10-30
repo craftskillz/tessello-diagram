@@ -340,13 +340,40 @@ export async function picture(): Promise<Buffer> {
   return small;
 }
 
-/** Chooses a picture with the Image tool, by a double-click on a point of the drawing. */
-export async function chooseImage(page: Page, x: number, y: number, name: string, buffer: Buffer, mimeType = "image/png") {
+/**
+ * Answers the caption dialog of an image: `undefined` confirms the pre-filled caption, a string types it over the
+ * selected one, `null` picks "Without caption", `false` cancels with Escape. The dialog is left once answered.
+ */
+export async function answerCaption(page: Page, caption?: string | null | false) {
+  const dialog = page.getByRole("dialog", { name: "Caption this image?" });
+  await dialog.waitFor();
+  if (caption === false) await page.keyboard.press("Escape");
+  else if (caption === null) await dialog.getByRole("button", { name: "Without caption" }).click();
+  else {
+    if (caption !== undefined) await page.keyboard.type(caption);
+    await page.keyboard.press("Enter");
+  }
+  await dialog.waitFor({ state: "hidden" });
+}
+
+/** Chooses a picture with the Image tool, by a double-click on a point of the drawing, then answers the caption dialog. */
+export async function chooseImage(page: Page, x: number, y: number, name: string, buffer: Buffer, mimeType = "image/png", caption?: string | null | false) {
   await page.getByRole("button", { name: "Image (I)" }).click();
   const chooser = page.waitForEvent("filechooser");
   const point = await at(page, x, y);
   await page.mouse.dblclick(point.x, point.y);
   await (await chooser).setFiles({ name, mimeType, buffer });
+  await answerCaption(page, caption);
+}
+
+/** Pastes a picture as the system clipboard would, without answering the caption dialog. */
+export async function pasteImage(page: Page, buffer: Buffer) {
+  await page.evaluate((base64) => {
+    const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+    const data = new DataTransfer();
+    data.items.add(new File([bytes], "image.png", { type: "image/png" }));
+    document.body.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true }));
+  }, buffer.toString("base64"));
 }
 
 /** The file the View hands the User when `start` runs: its name and its bytes. */

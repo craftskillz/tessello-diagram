@@ -67,4 +67,17 @@ describe("an image inserted", () => {
     assert.ok(image.groupId);
     assert.deepEqual(withGroups(diagram, [image.id]).sort(), [...ids].sort());
   });
+
+  test("is placed alone, ungrouped, when it has no caption or a blank one", () => {
+    for (const caption of [undefined, "", "  "]) {
+      const diagram = newDiagram("d1", "Plan", 0);
+      diagram.shapes = [newShape("s1", { x: 0, y: 0 }, 4)];
+      const ids = placeImage(diagram, { key: A, size: { w: 800, h: 400 }, caption, at: { x: 100, y: 50 } });
+      assert.equal(ids.length, 1);
+      assert.equal(diagram.shapes.length, 2);
+      const image = diagram.shapes.find((shape) => shape.id === ids[0])!;
+      assert.deepEqual([image.type, image.imageKey, image.x, image.y, image.w, image.h, image.z], ["image", A, 100, 50, 320, 160, 5]);
+      assert.ok(!image.groupId, "the image is in no group");
+    }
+  });
 });

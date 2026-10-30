@@ -7,6 +7,8 @@
     open = false,
     title = "",
     confirmLabel = t("save"),
+    secondaryLabel,
+    onSecondary,
     danger = false,
     wide = false,
     onConfirm,
@@ -16,6 +18,9 @@
     open?: boolean;
     title?: string;
     confirmLabel?: string;
+    /** An optional third choice, between Cancel and the confirm button. */
+    secondaryLabel?: string;
+    onSecondary?: () => void;
     danger?: boolean;
     /** A dialog with a table, wider than a form. */
     wide?: boolean;
@@ -51,6 +56,9 @@
       </div>
       <div class="dg-modal-actions">
         <button type="button" class="dg-btn" onclick={onClose}>{t("cancel")}</button>
+        {#if secondaryLabel && onSecondary}
+          <button type="button" class="dg-btn" onclick={onSecondary}>{secondaryLabel}</button>
+        {/if}
         <button type="button" class="dg-btn dg-btn--primary" class:dg-btn--danger={danger} onclick={onConfirm}>{confirmLabel}</button>
       </div>
     </div>

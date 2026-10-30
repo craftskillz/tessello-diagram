@@ -288,10 +288,10 @@ export async function storeImage(file: Blob): Promise<{ key: string; size: Size 
 }
 
 /**
- * Inserts a picture chosen or pasted, centered on a point, with its caption (`storeImage`). A picture refused is not
+ * Inserts a picture chosen or pasted, centered on a point, with its caption, if any (`storeImage`). A picture refused is not
  * placed, and a message tells why.
  */
-export async function insertImage(file: Blob, caption: string, at: Point): Promise<void> {
+export async function insertImage(file: Blob, caption: string | undefined, at: Point): Promise<void> {
   const diagram = diagrams.open;
   if (!status.loaded || !diagram) return;
   status.imageError = "";

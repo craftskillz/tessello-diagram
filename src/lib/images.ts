@@ -36,18 +36,25 @@ export function captionOf(fileName: string): string {
 }
 
 /**
- * Places an image centered on a point, at most `PLACED_SIDE` wide or high, with its caption in a free text below it:
- * the two form a group, in front of the drawing. Returns their ids, the image first.
+ * Places an image centered on a point, at most `PLACED_SIDE` wide or high, in front of the drawing. With a caption, a
+ * free text below it joins it in a group; without one (missing or blank), the image is alone, in no group. Returns
+ * the ids, the image first.
  */
-export function placeImage(diagram: Diagram, image: { key: string; size: Size; caption: string; at: Point }): [string, string] {
+export function placeImage(diagram: Diagram, image: { key: string; size: Size; caption?: string; at: Point }): string[] {
   const { w, h } = fittedSize(image.size, PLACED_SIDE);
   const z = nextZ(diagram);
+  const picture = { ...newShape(newId("shape"), image.at, z, "image"), w, h, imageKey: image.key };
+  const text = image.caption?.trim();
+  if (!text) {
+    diagram.shapes.push(picture);
+    return [picture.id];
+  }
   const groupId = newId("group");
-  const picture = { ...newShape(newId("shape"), image.at, z, "image"), w, h, imageKey: image.key, groupId };
+  picture.groupId = groupId;
   const caption = newShape(newId("shape"), image.at, z + 1, "text");
   caption.w = Math.max(caption.w, w);
   caption.y = image.at.y + h / 2 + CAPTION_GAP + caption.h / 2;
-  caption.text = image.caption;
+  caption.text = text;
   caption.groupId = groupId;
   diagram.shapes.push(picture, caption);
   return [picture.id, caption.id];

@@ -140,7 +140,7 @@ Click **Lock** to protect the selected shapes or arrows. A locked item is still 
 
 With the **Image** tool, double-click an empty spot and choose a picture: it is placed there. **Ctrl+V** (**Cmd+V**) pastes a picture you copied elsewhere, such as a screenshot, in the middle of the view.
 
-The picture comes with its caption below it: the name of its file without its extension, or **image** for a pasted picture. The two form a group; double-click the caption to change it like any text, or **Ungroup** them.
+Before the picture is placed, a dialog asks for its caption, filled with the name of its file without its extension, or **image** for a pasted picture, and selected so that typing replaces it. **With caption** (or Enter) places the picture with the caption below it, as a group: double-click the caption to change it like any text, or **Ungroup** them. **Without caption** places the picture alone, and so does an empty caption. Escape or **Cancel** places nothing.
 
 A picture is reduced to 1600 pixels on its longest side and stored once, however many times you place it. A picture still larger than about 900 KB, or one that would fill the storage, is refused with a message, and nothing is placed: try a smaller one.
 

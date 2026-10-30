@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { until } from "@tessello/sdk/testing";
 import { CLIP_TYPE } from "../src/lib/clipboard.ts";
-import { addRectangle, at, chooseImage, editStored, imagesStored, newDiagram, noisePng, openView, reload, saved, sidebar, storedDiagram, storedImages, tool, picture, useBrowser } from "./diagram.ts";
+import { addRectangle, answerCaption, at, chooseImage, pasteImage, editStored, imagesStored, newDiagram, noisePng, openView, reload, saved, sidebar, storedDiagram, storedImages, tool, picture, useBrowser } from "./diagram.ts";
 
 useBrowser();
 
@@ -84,7 +84,10 @@ test("stores a picture with transparency in PNG, and an SVG as it is", async () 
   const chooser = page.waitForEvent("filechooser");
   const point = await at(page, 0, -200);
   await page.mouse.dblclick(point.x, point.y);
-  await saved(host, async () => (await chooser).setFiles({ name: "badge.svg", mimeType: "image/svg+xml", buffer: Buffer.from(svg) }));
+  await saved(host, async () => {
+    await (await chooser).setFiles({ name: "badge.svg", mimeType: "image/svg+xml", buffer: Buffer.from(svg) });
+    await answerCaption(page);
+  });
   await page.getByRole("img", { name: "Free text badge", exact: true }).waitFor();
   const values = Object.values(await storedImages(host)).sort();
   assert.equal(values.length, 2);
@@ -122,23 +125,61 @@ test("refuses an image too heavy, with a message, and places nothing", async () 
   assert.equal(await page.getByRole("alert").count(), 0);
 });
 
-test("pastes an image of the system clipboard in the middle of the view, captioned image", async () => {
+test("pastes an image after a dialog whose caption, pre-filled and selected, is replaced by typing, and places both as a selected group", async () => {
   const noise = await picture();
   const opened = await openView();
   const { page, host } = opened;
   await newDiagram(opened, "Pictures");
-  const base64 = noise.toString("base64");
-  await saved(host, () =>
-    page.evaluate((base64) => {
-      const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
-      const data = new DataTransfer();
-      data.items.add(new File([bytes], "image.png", { type: "image/png" }));
-      document.body.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true }));
-    }, base64),
-  );
-  await page.getByRole("img", { name: "Free text image", exact: true }).waitFor();
-  const placed = (await storedDiagram(host)).shapes.find((shape) => shape.type === "image")!;
+  await pasteImage(page, noise);
+  const field = page.getByRole("dialog", { name: "Caption this image?" }).getByRole("textbox", { name: "Caption" });
+  await field.waitFor();
+  assert.equal(await field.inputValue(), "image");
+  assert.equal(await field.evaluate((input: HTMLInputElement) => document.activeElement === input && input.selectionStart === 0 && input.selectionEnd === input.value.length), true);
+  // Nothing is stored before the answer.
+  assert.deepEqual(await storedImages(host), {});
+  await saved(host, async () => {
+    await page.keyboard.type("Sketch");
+    await page.keyboard.press("Enter");
+  });
+  await page.getByRole("img", { name: "Free text Sketch", exact: true }).waitFor();
+  const shapes = (await storedDiagram(host)).shapes;
+  const placed = shapes.find((shape) => shape.type === "image")!;
   assert.deepEqual([placed.x, placed.y], [0, 0]);
+  assert.ok(placed.groupId);
+  assert.equal(shapes.find((shape) => shape.type === "text")!.groupId, placed.groupId);
+});
+
+test("\"Without caption\" places the image alone, selected, removed by one undo and kept after a reload", async () => {
+  const noise = await picture();
+  const opened = await openView();
+  const { page, host } = opened;
+  await newDiagram(opened, "Pictures");
+  await saved(host, async () => {
+    await pasteImage(page, noise);
+    await answerCaption(page, null);
+  });
+  const image = page.getByRole("img", { name: "Image", exact: true });
+  await image.waitFor();
+  const [placed, ...others] = (await storedDiagram(host)).shapes;
+  assert.equal(others.length, 0);
+  assert.equal(placed.type, "image");
+  assert.ok(!placed.groupId);
+  assert.equal(await page.getByRole("img", { name: /^Free text/ }).count(), 0);
+  await saved(host, () => page.keyboard.press("ControlOrMeta+z"));
+  assert.equal((await storedDiagram(host)).shapes.length, 0);
+  await saved(host, () => page.keyboard.press("ControlOrMeta+Shift+z"));
+  await reload(page);
+  await image.waitFor();
+});
+
+test("cancelling the caption dialog with Escape places nothing and writes nothing to the storage", async () => {
+  const noise = await picture();
+  const opened = await openView();
+  const { page, host } = opened;
+  await newDiagram(opened, "Pictures");
+  await chooseImage(page, 0, 0, "logo.png", noise, "image/png", false);
+  assert.equal((await storedDiagram(host)).shapes.length, 0);
+  assert.deepEqual(await storedImages(host), {});
 });
 
 test("pastes the shapes copied in the diagram, not the image pasted before: the last copy wins", async () => {
@@ -147,14 +188,10 @@ test("pastes the shapes copied in the diagram, not the image pasted before: the 
   const { page, host } = opened;
   await newDiagram(opened, "Pictures");
   const base64 = noise.toString("base64");
-  await saved(host, () =>
-    page.evaluate((base64) => {
-      const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
-      const data = new DataTransfer();
-      data.items.add(new File([bytes], "image.png", { type: "image/png" }));
-      document.body.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true }));
-    }, base64),
-  );
+  await saved(host, async () => {
+    await pasteImage(page, noise);
+    await answerCaption(page);
+  });
   await page.getByRole("img", { name: "Free text image", exact: true }).waitFor();
   await addRectangle(opened, -200, 100, "A");
 
@@ -177,14 +214,10 @@ test("pastes the shapes copied in the diagram, not the image pasted before: the 
   assert.equal(shapes.filter((shape) => shape.text === "A").length, 2);
 
   // An image copied elsewhere after the internal copy is pasted as an image.
-  await saved(host, () =>
-    page.evaluate((base64) => {
-      const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
-      const data = new DataTransfer();
-      data.items.add(new File([bytes], "image.png", { type: "image/png" }));
-      document.body.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true }));
-    }, base64),
-  );
+  await saved(host, async () => {
+    await pasteImage(page, noise);
+    await answerCaption(page);
+  });
   const after = (await storedDiagram(host)).shapes;
   assert.equal(after.filter((shape) => shape.type === "image").length, 2);
   assert.equal(after.filter((shape) => shape.text === "A").length, 2);
