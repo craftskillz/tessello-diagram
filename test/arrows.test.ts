@@ -17,46 +17,66 @@ describe("the end of an arrow released at a point", () => {
 
   test("is attached to a port when released on it, or within its reach", () => {
     // The north-east port of A is its top-right corner, at (60, −30).
-    assert.deepEqual(endAt([a], { x: 60, y: -30 }, 8).end, { shapeId: "a", port: "NE" });
-    assert.deepEqual(endAt([a], { x: 65, y: -34 }, 8).end, { shapeId: "a", port: "NE" });
+    assert.deepEqual(endAt([a], { x: 60, y: -30 }, 8, 1).end, { shapeId: "a", port: "NE" });
+    assert.deepEqual(endAt([a], { x: 65, y: -34 }, 8, 1).end, { shapeId: "a", port: "NE" });
+  });
+
+  test("snaps to a point between a corner and the middle of a side when the side is long enough on screen to offer it", () => {
+    // The north-plus-one port of A is a third of the way from the middle of its top side to the corner: (20, −30).
+    assert.deepEqual(endAt([a], { x: 22, y: -31 }, 8, 1).end, { shapeId: "a", port: "N+1" });
+    assert.deepEqual(endAt([a], { x: 22, y: -31 }, 8, 2).end, { shapeId: "a", port: "N+1" });
+  });
+
+  test("does not snap to a point its side does not offer at that zoom: it takes the nearest offered port, or is automatic", () => {
+    // At half the zoom, a sixth of the top side is 10 pixels: only the corners and the middle are offered.
+    assert.deepEqual(endAt([a], { x: 22, y: -28 }, 8, 0.5).end, { shapeId: "a", port: null });
+    assert.deepEqual(endAt([a], { x: 3, y: -28 }, 8, 0.5).end, { shapeId: "a", port: "N" });
+    // The short sides (a sixth of 60 is 10 pixels) offer no intermediate point at the zoom where the long ones do.
+    assert.deepEqual(endAt([a], { x: 60, y: -10 }, 8, 1).end, { shapeId: "a", port: null });
+  });
+
+  test("snaps to the nearest port within reach, not the first of the list", () => {
+    // N+1 is at (20, −30) and N+2 at (40, −30): 20 pixels apart. Within a reach of 12 both are near the points 29 and 31: each time the nearer one wins.
+    assert.deepEqual(endAt([a], { x: 29, y: -30 }, 12, 1).end, { shapeId: "a", port: "N+1" });
+    assert.deepEqual(endAt([a], { x: 31, y: -30 }, 12, 1).end, { shapeId: "a", port: "N+2" });
   });
 
   test("is automatic when released elsewhere on the shape", () => {
-    assert.deepEqual(endAt([a], { x: 10, y: 5 }, 8).end, { shapeId: "a", port: null });
+    assert.deepEqual(endAt([a], { x: 10, y: 5 }, 8, 1).end, { shapeId: "a", port: null });
   });
 
   test("is free when released on the empty canvas", () => {
-    assert.deepEqual(endAt([a], { x: 300, y: 5 }, 8).end, { x: 300, y: 5 });
+    assert.deepEqual(endAt([a], { x: 300, y: 5 }, 8, 1).end, { x: 300, y: 5 });
   });
 
   test("gives the shape and the port it aims at, to highlight them", () => {
-    const target = endAt([a], { x: 60, y: -30 }, 8);
+    const target = endAt([a], { x: 60, y: -30 }, 8, 1);
     assert.equal(target.shape?.id, "a");
     assert.equal(target.port, "NE");
-    assert.equal(endAt([a], { x: 10, y: 5 }, 8).port, null);
+    assert.equal(endAt([a], { x: 10, y: 5 }, 8, 1).port, null);
   });
 
   test("the reach of a port is the one given, so that it stays the same on screen at any zoom", () => {
-    assert.deepEqual(endAt([a], { x: 70, y: -30 }, 8).end, { x: 70, y: -30 });
-    assert.deepEqual(endAt([a], { x: 70, y: -30 }, 12).end, { shapeId: "a", port: "NE" });
+    assert.deepEqual(endAt([a], { x: 70, y: -30 }, 8, 1).end, { x: 70, y: -30 });
+    assert.deepEqual(endAt([a], { x: 70, y: -30 }, 12, 1).end, { shapeId: "a", port: "NE" });
   });
 
   test("follows the ports of a turned shape", () => {
     // Turned by 90° clockwise, the north-east port of A is at (30, 60).
-    assert.deepEqual(endAt([{ ...a, rotation: 90 }], { x: 30, y: 60 }, 8).end, { shapeId: "a", port: "NE" });
+    assert.deepEqual(endAt([{ ...a, rotation: 90 }], { x: 30, y: 60 }, 8, 1).end, { shapeId: "a", port: "NE" });
   });
 
   test("on overlapping shapes, attaches to the frontmost", () => {
     const front = rect("front", 40, 0, { z: 1 });
-    assert.deepEqual(endAt([front, a], { x: 30, y: 10 }, 8).end, { shapeId: "front", port: null });
-    assert.deepEqual(endAt([a, front], { x: 30, y: 10 }, 8).end, { shapeId: "front", port: null });
+    assert.deepEqual(endAt([front, a], { x: 30, y: 10 }, 8, 1).end, { shapeId: "front", port: null });
+    assert.deepEqual(endAt([a, front], { x: 30, y: 10 }, 8, 1).end, { shapeId: "front", port: null });
   });
 
   test("is free on a locked shape, which still says which shape it is on", () => {
     const locked = { ...a, locked: true };
-    assert.deepEqual(endAt([locked], { x: 10, y: 5 }, 8).end, { x: 10, y: 5 });
-    assert.deepEqual(endAt([locked], { x: 60, y: -30 }, 8).end, { x: 60, y: -30 });
-    assert.equal(endAt([locked], { x: 10, y: 5 }, 8).shape?.id, "a");
+    assert.deepEqual(endAt([locked], { x: 10, y: 5 }, 8, 1).end, { x: 10, y: 5 });
+    assert.deepEqual(endAt([locked], { x: 60, y: -30 }, 8, 1).end, { x: 60, y: -30 });
+    assert.equal(endAt([locked], { x: 10, y: 5 }, 8, 1).shape?.id, "a");
   });
 });
 
@@ -65,9 +85,9 @@ describe("an arrow attached to a custom shape", () => {
   const b = rect("b", 400, 0);
 
   test("attaches to the anchors of its definition", () => {
-    assert.deepEqual(endAt([icon], { x: 50, y: -25 }, 8).end, { shapeId: "icon", port: "right" });
+    assert.deepEqual(endAt([icon], { x: 50, y: -25 }, 8, 1).end, { shapeId: "icon", port: "right" });
     // Its corners are not ports: there, the end is automatic.
-    assert.deepEqual(endAt([icon], { x: 50, y: 50 }, 8).end, { shapeId: "icon", port: null });
+    assert.deepEqual(endAt([icon], { x: 50, y: 50 }, 8, 1).end, { shapeId: "icon", port: null });
   });
 
   test("starts on its anchor", () => {
@@ -80,6 +100,10 @@ describe("an arrow attached to a custom shape", () => {
     const path = layoutArrows(new Map([["icon", gone], ["b", b]]), [{ id: "x", from: { shapeId: "icon", port: "right" }, to: { shapeId: "b", port: null }, route: "straight" }]).get("x")!;
     close(startOf(path), { x: 50, y: 0 });
     close(endOf(path), { x: 340, y: 0 });
+  });
+  test("on a point of a built-in shape, which it does not have, is automatic too", () => {
+    const path = layoutArrows(new Map([["icon", icon], ["b", b]]), [{ id: "x", from: { shapeId: "icon", port: "E+1" }, to: { shapeId: "b", port: null }, route: "straight" }]).get("x")!;
+    close(startOf(path), { x: 50, y: 0 });
   });
 });
 
@@ -96,9 +120,9 @@ describe("an arrow attached to a cell of a table", () => {
   const changed = (change: TableChange) => outlineOf([], { ...base, ...change });
 
   test("is attached to the point of a cell where it is released, and to none in an inner cell", () => {
-    assert.deepEqual(endAt([table], { x: -40, y: -45 }, 8).end, { shapeId: "t", port: "r0c0-NE" });
+    assert.deepEqual(endAt([table], { x: -40, y: -45 }, 8, 1).end, { shapeId: "t", port: "r0c0-NE" });
     // The middle of the table is an inner cell: no port, automatic.
-    assert.deepEqual(endAt([table], { x: 0, y: 0 }, 8).end, { shapeId: "t", port: null });
+    assert.deepEqual(endAt([table], { x: 0, y: 0 }, 8, 1).end, { shapeId: "t", port: null });
   });
 
   test("starts on its cell point, and follows its cell when a column is resized", () => {
@@ -169,6 +193,29 @@ describe("the path of an arrow", () => {
     close(endOf(path), { x: 200, y: -30 });
     // From the center of A toward (200, −30), the right side of A is reached at y = −30 × 60 / 400.
     close(startOf(path), { x: -140, y: -4.5 });
+  });
+
+  test("an arrow stored on a point its side no longer offers keeps its port and is drawn at the same place", () => {
+    const stored = layoutArrows(shapes, [arrow("1", { shapeId: "a", port: "E-1" }, { shapeId: "b", port: "W+1" })]).get("1")!;
+    close(startOf(stored), { x: -140, y: -10 });
+    close(endOf(stored), { x: 140, y: -10 });
+  });
+
+  test("two arrows between neighbouring points of facing sides are parallel, straight or elbow", () => {
+    const route = (kind: "straight" | "elbow", y: number) => {
+      const moved = new Map(shapes).set("b", { ...b, y });
+      const paths = layoutArrows(moved, [
+        arrow("1", { shapeId: "a", port: "E-1" }, { shapeId: "b", port: "W+1" }, kind),
+        arrow("2", { shapeId: "a", port: "E+1" }, { shapeId: "b", port: "W-1" }, kind),
+      ]);
+      return [paths.get("1")!.points, paths.get("2")!.points];
+    };
+    for (const kind of ["straight", "elbow"] as const) {
+      const [first, second] = route(kind, 100);
+      assert.equal(first.length, second.length);
+      // Each piece of the second runs the same way as the one of the first, 20 pixels lower.
+      first.forEach((point, index) => close({ x: second[index].x - point.x, y: second[index].y - point.y }, { x: 0, y: 20 }, 1e-6));
+    }
   });
 
   test("two straight arrows between the same shapes are drawn side by side", () => {

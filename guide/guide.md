@@ -57,7 +57,7 @@ The preview uses the current default route. **Shift** constrains the direction t
 
 With the **Arrow** tool, press, drag and release: one gesture draws the arrow, wherever it starts. **Shift** keeps it at a multiple of 45°. A click without a drag draws nothing.
 
-While you draw, the shape under the pointer shows its eight points: its corners and the middles of its sides, on its outline. Each end of the arrow lands where you release it:
+While you draw, the shape under the pointer shows its points, on its outline: each side has seven, corners included. The four points between a corner and the middle of a side only appear when the side is long enough on screen, so grow the shape or zoom in to reach them; an arrow already attached to such a point stays attached when the point is hidden. Custom shapes and tables keep their own points. Each end of the arrow lands where you release it:
 
 - **on a point**, which lights up as you reach it: the end stays on that point, even when the shape turns;
 - **elsewhere on a shape**: the end is automatic, and meets the outline on the way to the next point of the arrow;

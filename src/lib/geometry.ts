@@ -179,9 +179,64 @@ const PORT_SIDES: Record<string, Point> = {
   NW: { x: -1, y: -1 },
 };
 
-/** The ports a shape offers: the eight of a built-in shape, or its anchors (those of a custom shape or a table), maybe none. */
+/** A point of a side of the box of a built-in shape (see `BOX_PORTS`). */
+interface BoxPort {
+  id: string;
+  side: "N" | "E" | "S" | "W";
+  /** The point on the box, as a multiple of the half-size of the box in each direction. */
+  at: Point;
+  /** The way its side faces. */
+  normal: Point;
+  /** Whether it is between a corner and the middle of its side, rather than one of the eight of `PORTS`. */
+  intermediate: boolean;
+}
+
+/**
+ * The 24 points of a built-in shape, from north clockwise: seven on each side of its box, corners included, evenly spaced
+ * from one corner to the next. Those named like a port of `PORTS` are the eight of old; the others are named by their
+ * offset from the middle of their side, in sixths of the side, counted clockwise (`N+1` is one sixth right of `N`, `E+1`
+ * one sixth below `E`).
+ */
+const BOX_PORTS: readonly BoxPort[] = (() => {
+  const sides = [
+    { name: "N", normal: { x: 0, y: -1 }, at: (k: number) => ({ x: k / 3, y: -1 }), corner: "NE" },
+    { name: "E", normal: { x: 1, y: 0 }, at: (k: number) => ({ x: 1, y: k / 3 }), corner: "SE" },
+    { name: "S", normal: { x: 0, y: 1 }, at: (k: number) => ({ x: -k / 3, y: 1 }), corner: "SW" },
+    { name: "W", normal: { x: -1, y: 0 }, at: (k: number) => ({ x: -1, y: -k / 3 }), corner: "NW" },
+  ] as const;
+  // Each side from its first point after a corner to the corner that ends it: N-2 … N+2, NE, E-2 …, NW.
+  const clockwise = sides.flatMap(({ name, normal, at, corner }) => [
+    ...[-2, -1, 0, 1, 2].map((k) => ({ id: k === 0 ? name : `${name}${k > 0 ? "+" : ""}${k}`, side: name, at: at(k), normal, intermediate: k !== 0 })),
+    { id: corner, side: name, at: at(3), normal, intermediate: false },
+  ]);
+  // From the middle of north: the two points of north before it come last.
+  return [...clockwise.slice(2), ...clockwise.slice(0, 2)];
+})();
+
+/** A point between a corner and the middle of a side of a built-in shape, by its port; none for any other port. */
+const intermediateNamed = (port: string): BoxPort | undefined => BOX_PORTS.find((boxPort) => boxPort.intermediate && boxPort.id === port);
+
+/** The ports a shape knows: the 24 of a built-in shape, or its anchors (those of a custom shape or a table), maybe none. */
 export const portsOf = (shape: { type?: ShapeType; anchors?: readonly Anchor[] }): readonly string[] =>
-  hasAnchors(shape) ? (shape.anchors ?? []).map((anchor) => anchor.id) : PORTS;
+  hasAnchors(shape) ? (shape.anchors ?? []).map((anchor) => anchor.id) : BOX_PORTS.map((port) => port.id);
+
+/**
+ * The least gap, in pixels on screen, between two neighbouring points of a side for the points between its corners and
+ * its middle to be offered.
+ */
+export const PORT_MIN_GAP = 12;
+
+/**
+ * The ports offered on screen at a `zoom`, for showing markers and snapping, in the order of `portsOf`: those of a shape
+ * with anchors, all of them. Of a built-in shape, each side decides by itself: it offers the four points between its
+ * corners and its middle only when two neighbouring points of that side are at least `PORT_MIN_GAP` pixels apart (a
+ * sixth of its length, in the unrotated box, times the zoom), else just its corners and its middle.
+ */
+export function offeredPorts(shape: Partial<Outlined> & { w: number; h: number }, zoom: number): readonly string[] {
+  if (hasAnchors(shape)) return portsOf(shape);
+  const roomy = (side: BoxPort["side"]) => ((side === "N" || side === "S" ? shape.w : shape.h) / 6) * zoom >= PORT_MIN_GAP;
+  return BOX_PORTS.filter((port) => !port.intermediate || roomy(port.side)).map((port) => port.id);
+}
 
 /** An anchor of a shape, by its port; none for a port it does not have. */
 const anchorNamed = (shape: Outlined, port: string): Anchor | undefined => shape.anchors?.find((anchor) => anchor.id === port);
@@ -199,6 +254,14 @@ export function portPoint(shape: Outlined, port: string): Point {
     const at = rotate(anchor ? anchorPoint(shape, anchor) : { x: 0, y: 0 }, shape.rotation);
     return { x: shape.x + at.x, y: shape.y + at.y };
   }
+  const onBox = intermediateNamed(port);
+  if (onBox) {
+    // The point on the side of the box, projected from the center onto the real outline.
+    const local = { x: (onBox.at.x * shape.w) / 2, y: (onBox.at.y * shape.h) / 2 };
+    const factor = outlineFactor(shape, local);
+    const onOutline = rotate({ x: local.x * factor, y: local.y * factor }, shape.rotation);
+    return { x: shape.x + onOutline.x, y: shape.y + onOutline.y };
+  }
   const side = PORT_SIDES[port];
   if (!side) return { x: shape.x, y: shape.y };
   const a = shape.w / 2;
@@ -211,10 +274,12 @@ export function portPoint(shape: Outlined, port: string): Point {
 
 /**
  * The direction a port faces, as a unit vector: that its anchor says (a point of a table faces away from its side), else
- * away from the center of its shape; none for a port at the center.
+ * away from the center of its shape, except the points between the corners and the middle of a side of a built-in shape,
+ * which face away from that side, so that two arrows leaving neighbouring points stay parallel; none for a port at the
+ * center.
  */
 export function portDirection(shape: Outlined, port: string): Point {
-  let side: Point | undefined = PORT_SIDES[port];
+  let side: Point | undefined = intermediateNamed(port)?.normal ?? PORT_SIDES[port];
   if (hasAnchors(shape)) {
     const anchor = anchorNamed(shape, port);
     side = anchor && (anchor.facing ?? anchorPoint(shape, anchor));

@@ -8,7 +8,7 @@
   import { applyStyle, type Clip, copyItems, copyStyle, imageToPaste, markClipboard, pasteItems } from "../lib/clipboard.ts";
   import { createArrow, createShape } from "../lib/defaults.ts";
   import { type Arrow, type Diagram, keepsRatio, type ShapeLink, newId, nextZ, removeShape, type Shape, withGroups } from "../lib/diagram.ts";
-  import { type Box, boxWithin, CONNECTION_DIRECTIONS, type ConnectionDirection, connectionHandlePoint, connectionPort, contains, type Corner, cornersOf, cornerSign, degrees, type Endpoint, isAttached, type Point, portPoint, portsOf, resizeBox, rotate, shapeAt } from "../lib/geometry.ts";
+  import { type Box, boxWithin, CONNECTION_DIRECTIONS, type ConnectionDirection, connectionHandlePoint, connectionPort, contains, type Corner, cornersOf, cornerSign, degrees, type Endpoint, isAttached, type Point, offeredPorts, portPoint, resizeBox, rotate, shapeAt } from "../lib/geometry.ts";
   import type { TextRun } from "../lib/richtext.ts";
   import { t, titleOf } from "../lib/i18n.ts";
   import { alignment, type Bounds, boundsOf, fitView, GRID, type Guide, pointsBounds, scaleBoxes, snapToGrid } from "../lib/placement.ts";
@@ -135,7 +135,7 @@
    */
   const aim = $derived(
     pointer && (gesture?.kind === "draw" || gesture?.kind === "end" || (!gesture && ui.tool === "arrow"))
-      ? endAt(outlined, gesture?.kind === "draw" ? gesture.at : pointer, reach(PORT_REACH))
+      ? endAt(outlined, gesture?.kind === "draw" ? gesture.at : pointer, reach(PORT_REACH), zoom)
       : undefined,
   );
   /** Whether the Select tool hovers an arrow, which the cursor then shows. */
@@ -143,7 +143,7 @@
   const isFree = (arrow: Arrow) => !isAttached(arrow.from) && !isAttached(arrow.to);
   /** The end an arrow being drawn gets at a point: what is there, or free if it would join the start to itself. */
   function endingAt(from: Endpoint, at: Point): Endpoint {
-    const { end } = endAt(outlined, at, reach(PORT_REACH));
+    const { end } = endAt(outlined, at, reach(PORT_REACH), zoom);
     return isDrawable(from, end) ? end : { x: at.x, y: at.y };
   }
   /** Where the label of an arrow is, its lines and the size of its box: its center slides along the path of the arrow. */
@@ -308,7 +308,7 @@
     const ctrl = event.ctrlKey || event.metaKey;
     // The Arrow tool draws from anywhere, but not from a locked shape.
     if (ui.tool === "arrow") {
-      const start = endAt(outlined, at, reach(PORT_REACH));
+      const start = endAt(outlined, at, reach(PORT_REACH), zoom);
       if (start.shape?.locked) return;
       return capture(event, { kind: "draw", from: start.end, press: { x: event.clientX, y: event.clientY }, at, moved: false });
     }
@@ -1029,7 +1029,7 @@
 
       {#if aim?.shape && !aim.shape.locked}
         {@const shape = aim.shape}
-        {#each portsOf(shape) as port (port)}
+        {#each offeredPorts(shape, zoom) as port (port)}
           {@const at = portPoint(shape, port)}
           <circle class="dg-port" class:aimed={aim.port === port} data-port={port} cx={at.x} cy={at.y} r={(aim.port === port ? 5 : 3.5) / zoom} stroke-width={1.5 / zoom} />
         {/each}

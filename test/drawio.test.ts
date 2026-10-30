@@ -200,6 +200,18 @@ describe("converting a diagram to draw.io", () => {
     assert.equal(cellOf(xml, "a1").attributes.parent, "1");
   });
 
+  test("an arrow attached to one of the points between a corner and the middle of a side leaves and enters at its fraction", () => {
+    const diagram = newDiagram("d1", "Points", 0);
+    diagram.shapes = [newShape("api", { x: 0, y: 0 }, 0), newShape("web", { x: 0, y: 200 }, 1)];
+    diagram.arrows = [newArrow("a1", { shapeId: "api", port: "N+1" }, { shapeId: "web", port: "W+2" }, 2)];
+    const { xml } = convert(diagram);
+    const style = parseStyle(cellOf(xml, "a1").attributes.style);
+    // A third of the way from the middle of the top side to its corner: two thirds of the width, at the top.
+    assert.deepEqual([style.exitX, style.exitY, style.exitPerimeter], ["0.667", "0", "0"]);
+    // Two sixths of the west side from its middle, clockwise, which is upward: a sixth of the height below the top.
+    assert.deepEqual([style.entryX, style.entryY, style.entryPerimeter], ["0", "0.167", "0"]);
+  });
+
   test("an arrow attached to a cell of a table leaves at that cell's point", () => {
     const diagram = newDiagram("d1", "Cells", 0);
     diagram.shapes = [{ ...newShape("t1", { x: 0, y: 0 }, 0, "table"), w: 240, h: 90, columns: [0.25, 0.25, 0.5] }, newShape("web", { x: 0, y: 300 }, 1)];

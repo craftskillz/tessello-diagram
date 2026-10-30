@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { arrowHead, boxWithin, connectionHandlePoint, connectionPort, contains, cornerRadiusOf, degrees, exitPoint, outlinePoint, portDirection, portPoint, portsOf, resizeBox, rotate, shapeAt } from "../src/lib/geometry.ts";
+import { arrowHead, boxWithin, connectionHandlePoint, connectionPort, contains, cornerRadiusOf, degrees, exitPoint, offeredPorts, outlinePoint, PORT_MIN_GAP, portDirection, portPoint, portsOf, resizeBox, rotate, shapeAt } from "../src/lib/geometry.ts";
 import { newShape } from "../src/lib/diagram.ts";
 import { tableAnchors } from "../src/lib/table.ts";
 
@@ -125,8 +125,10 @@ describe("where a segment from the center of a shape leaves its outline, by type
 });
 
 describe("the ports of a shape", () => {
-  test("a built-in shape has eight, from north clockwise", () => {
-    assert.deepEqual(portsOf({ type: "rect" }), ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]);
+  test("a built-in shape has 24, from north clockwise: seven points on each side, the corners included", () => {
+    assert.deepEqual(portsOf({ type: "rect" }), [
+      "N", "N+1", "N+2", "NE", "E-2", "E-1", "E", "E+1", "E+2", "SE", "S-2", "S-1", "S", "S+1", "S+2", "SW", "W-2", "W-1", "W", "W+1", "W+2", "NW", "N-2", "N-1",
+    ]);
   });
 
   test("on a rectangle, they are its corners and the middles of its sides", () => {
@@ -155,8 +157,128 @@ describe("the ports of a shape", () => {
     close(portPoint({ ...box, rotation: 90 }, "N"), { x: 20, y: 0 });
   });
 
+  test("on a rectangle, the other sixteen are evenly spaced sixths of each side, counted clockwise from its middle", () => {
+    close(portPoint(box, "N+1"), { x: 100 / 6, y: -20 });
+    close(portPoint(box, "N+2"), { x: 100 / 3, y: -20 });
+    close(portPoint(box, "N-2"), { x: -100 / 3, y: -20 });
+    close(portPoint(box, "N-1"), { x: -100 / 6, y: -20 });
+    close(portPoint(box, "E-2"), { x: 50, y: -40 / 3 });
+    close(portPoint(box, "E+1"), { x: 50, y: 40 / 6 });
+    close(portPoint(box, "S+1"), { x: -100 / 6, y: 20 });
+    close(portPoint(box, "S-2"), { x: 100 / 3, y: 20 });
+    close(portPoint(box, "W-1"), { x: -50, y: 40 / 6 });
+    close(portPoint(box, "W+2"), { x: -50, y: -40 / 3 });
+  });
+
+  test("they follow the center of the shape", () => {
+    close(portPoint({ ...box, x: 200, y: 100 }, "N+1"), { x: 200 + 100 / 6, y: 80 });
+  });
+
+  test("they follow the rotation of the shape", () => {
+    // Turned by 90° clockwise, the top side of the 100 × 40 rectangle is on the right on screen: (x, −20) becomes (20, x).
+    close(portPoint({ ...box, rotation: 90 }, "N+1"), { x: 20, y: 100 / 6 });
+    close(portPoint({ ...box, rotation: 90 }, "E-2"), { x: 40 / 3, y: 50 });
+  });
+
+  test("on an ellipse, they are projected from the center onto the curve", () => {
+    // The point (100/6, −20) of the box is scaled by 1 / hypot(x / 50, y / 20).
+    const factor = 1 / Math.hypot(100 / 6 / 50, 1);
+    close(portPoint({ ...box, type: "ellipse" }, "N+1"), { x: (100 / 6) * factor, y: -20 * factor });
+    close(portPoint({ ...box, type: "ellipse", x: 10, y: 5 }, "W-1"), { x: 10 - 50 * (1 / Math.hypot(1, 40 / 6 / 20)), y: 5 + (40 / 6) / Math.hypot(1, 40 / 6 / 20) });
+  });
+
+  test("on a circle, they are on the circle", () => {
+    const circle = { type: "circle" as const, x: 0, y: 0, w: 60, h: 60, rotation: 0 };
+    // N+2 is at (20, −30) of the box, 36.06 from the center: brought back to 30.
+    const length = Math.hypot(20, 30);
+    close(portPoint(circle, "N+2"), { x: (20 * 30) / length, y: (-30 * 30) / length });
+    for (const port of portsOf(circle)) assert.ok(Math.abs(Math.hypot(portPoint(circle, port).x, portPoint(circle, port).y) - 30) < 1e-9, port);
+  });
+
+  test("on a database, they are projected onto the sides and the lids", () => {
+    const database = { type: "database" as const, x: 0, y: 0, w: 60, h: 100, rotation: 0 };
+    // E-2 is at (30, −33.33), on the side (which ends 38 above the center).
+    close(portPoint(database, "E-2"), { x: 30, y: -100 / 3 });
+    // N+1 is at (10, −50) of the box, above the upper lid (centered 38 above the center, 12 high): on the ellipse of the lid, on the ray.
+    const top = portPoint(database, "N+1");
+    assert.ok(Math.abs((top.x / 30) ** 2 + ((top.y + 38) / 12) ** 2 - 1) < 1e-9);
+    assert.ok(Math.abs(top.x * -50 - top.y * 10) < 1e-9);
+  });
+
+  test("on a rounded rectangle, one that falls within a corner is pulled onto its arc", () => {
+    const rounded = { type: "rect" as const, x: 0, y: 0, w: 120, h: 60, rotation: 0, cornerRadius: 20 };
+    // N+2 at (40, −30) is where the arc starts: on the box.
+    close(portPoint(rounded, "N+2"), { x: 40, y: -30 });
+    // Half-width 35, radius 30: the arc is centered at (5, 0) and N+2, at (70/3, −30), is within it. The point is on the arc, on the ray.
+    const at = portPoint({ ...rounded, w: 70, cornerRadius: 30 }, "N+2");
+    assert.ok(Math.abs(Math.hypot(at.x - 5, at.y) - 30) < 1e-9);
+    assert.ok(Math.abs(at.x * -30 - at.y * (70 / 3)) < 1e-9);
+    assert.ok(at.y > -30);
+  });
+
   test("an unknown port is the center of the shape", () => {
     close(portPoint(box, "nowhere"), { x: 0, y: 0 });
+    // Past the second point of a side, there is none: the corner has its own name.
+    close(portPoint(box, "N+3"), { x: 0, y: 0 });
+    close(portDirection(box, "N+3"), { x: 0, y: 0 });
+  });
+});
+
+describe("the direction of the ports of a built-in shape", () => {
+  test("the eight keep leaving away from the center", () => {
+    close(portDirection(box, "NE"), { x: Math.SQRT1_2, y: -Math.SQRT1_2 });
+    close(portDirection(box, "W"), { x: -1, y: 0 });
+  });
+
+  test("the sixteen others leave by the normal of their side, so that neighbours leave in parallel", () => {
+    close(portDirection(box, "N+1"), { x: 0, y: -1 });
+    close(portDirection(box, "N-2"), { x: 0, y: -1 });
+    close(portDirection(box, "E-1"), { x: 1, y: 0 });
+    close(portDirection(box, "S+2"), { x: 0, y: 1 });
+    close(portDirection(box, "W+1"), { x: -1, y: 0 });
+    close(portDirection({ ...box, type: "ellipse" }, "N+1"), { x: 0, y: -1 });
+  });
+
+  test("the normal turns with the shape", () => {
+    close(portDirection({ ...box, rotation: 90 }, "N+1"), { x: 1, y: 0 });
+    close(portDirection({ ...box, rotation: 90 }, "E-2"), { x: 0, y: 1 });
+  });
+});
+
+describe("the ports offered on screen at a zoom", () => {
+  const eight = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+
+  test("the threshold is 12 screen pixels between two neighbours", () => {
+    assert.equal(PORT_MIN_GAP, 12);
+  });
+
+  test("a small shape offers only the eight, a larger one or a larger zoom all 24", () => {
+    const circle = { type: "circle" as const, x: 0, y: 0, w: 60, h: 60, rotation: 0 };
+    assert.deepEqual(offeredPorts(circle, 1), eight);
+    assert.deepEqual(offeredPorts(circle, 2), portsOf(circle));
+    assert.deepEqual(offeredPorts(circle, 0.1), eight);
+  });
+
+  test("the gap is exactly the threshold: side / 6 × zoom = 12 offers them", () => {
+    assert.equal(offeredPorts({ ...box, w: 72, h: 72 }, 1).length, 24);
+    assert.equal(offeredPorts({ ...box, w: 71, h: 71 }, 1).length, 8);
+  });
+
+  test("each side decides by its own length, in the same order as portsOf", () => {
+    // 200 × 40: the top and the bottom have a gap of 33, the short sides 6.7.
+    assert.deepEqual(offeredPorts({ ...box, w: 200, h: 40 }, 1), ["N", "N+1", "N+2", "NE", "E", "SE", "S-2", "S-1", "S", "S+1", "S+2", "SW", "W", "NW", "N-2", "N-1"]);
+    assert.equal(offeredPorts({ ...box, w: 200, h: 40 }, 1).length, 16);
+    assert.deepEqual(offeredPorts({ ...box, w: 40, h: 200 }, 1), ["N", "NE", "E-2", "E-1", "E", "E+1", "E+2", "SE", "S", "SW", "W-2", "W-1", "W", "W+1", "W+2", "NW"]);
+  });
+
+  test("the box is the unrotated one: the rotation changes nothing", () => {
+    assert.deepEqual(offeredPorts({ ...box, w: 200, h: 40, rotation: 90 }, 1), offeredPorts({ ...box, w: 200, h: 40 }, 1));
+  });
+
+  test("a shape with anchors offers all of them, at any zoom", () => {
+    const table = { ...box, type: "table" as const, anchors: [{ id: "r0c0-N", x: 0.25, y: 0 }, { id: "r0c1-N", x: 0.75, y: 0 }] };
+    assert.deepEqual(offeredPorts(table, 0.1), portsOf(table));
+    assert.deepEqual(offeredPorts({ ...box, type: "custom" }, 1), []);
   });
 });
 
@@ -223,7 +345,7 @@ describe("the ports of a table", () => {
   });
 
   test("a shape without anchors (not a table yet given its cells) keeps the eight", () => {
-    assert.deepEqual(portsOf({ type: "table" }), ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]);
+    assert.deepEqual(portsOf({ type: "table" }), portsOf({ type: "rect" }));
   });
 });
 

@@ -2,7 +2,7 @@
 // path each arrow follows. The drawn line, its click zone and its label all come from that one path, so that what the
 // User sees is what they can click.
 
-import { arrowHead, contains, type Endpoint, exitPoint, isAttached, type Outlined, outlinePoint, type Point, portDirection, portPoint, portsOf } from "./geometry.ts";
+import { arrowHead, contains, type Endpoint, exitPoint, isAttached, offeredPorts, type Outlined, outlinePoint, type Point, portDirection, portPoint, portsOf } from "./geometry.ts";
 
 /** A shape as the arrows see it: its outline, its place in the drawing order, and whether it is locked. */
 export interface Target extends Outlined {
@@ -19,17 +19,21 @@ const frontFirst = <S extends Target>(shapes: readonly S[]): S[] =>
     .map(({ shape }) => shape);
 
 /**
- * Where an end released at `point` lands: at a port of the frontmost shape when the point is within `reach` of it,
- * automatic when it is elsewhere on that shape, free otherwise. A locked shape takes no end: it is free there.
+ * Where an end released at `point` lands: at the nearest port that the frontmost shape offers at that `zoom` (see
+ * `offeredPorts`: a point hidden at that zoom does not snap) when the point is within `reach` of it, automatic when it
+ * is elsewhere on that shape, free otherwise. A locked shape takes no end: it is free there.
  * `shape` and `port` say what the end aims at, so that it can be highlighted while the end is dragged.
  */
-export function endAt<S extends Target>(shapes: readonly S[], point: Point, reach: number): { end: Endpoint; shape?: S; port: string | null } {
+export function endAt<S extends Target>(shapes: readonly S[], point: Point, reach: number, zoom: number): { end: Endpoint; shape?: S; port: string | null } {
   const free = { x: point.x, y: point.y };
   for (const shape of frontFirst(shapes)) {
-    const port = portsOf(shape).find((port) => {
-      const at = portPoint(shape, port);
-      return Math.hypot(at.x - point.x, at.y - point.y) <= reach;
-    });
+    let port: string | undefined;
+    let nearest = Infinity;
+    for (const candidate of offeredPorts(shape, zoom)) {
+      const at = portPoint(shape, candidate);
+      const gap = Math.hypot(at.x - point.x, at.y - point.y);
+      if (gap <= reach && gap < nearest) [port, nearest] = [candidate, gap];
+    }
     if (!port && !contains(shape, point)) continue;
     if (shape.locked) return { end: free, shape, port: null };
     return { end: { shapeId: shape.id, port: port ?? null }, shape, port: port ?? null };

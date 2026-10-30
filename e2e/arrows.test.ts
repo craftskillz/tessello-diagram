@@ -271,6 +271,33 @@ test("an end attached to the north-east port follows the shape turned by 90°, u
   await page.getByRole("img", { name: "Arrow from (-100, 0) to Rectangle B", exact: true }).waitFor();
 });
 
+test("an arrow released on a point between a corner and the middle of a side attaches to it, which the shape shows while aiming; a side too short on screen does not offer its points", async () => {
+  const opened = await openView();
+  const { page, host } = opened;
+  await newDiagram(opened, "Points");
+  await addRectangle(opened, 200, 0, "B");
+  await tool(page, "Arrow (F)");
+  // While the arrow is drawn toward the north-plus-one point of B, a third of the way from the middle of its top side to its corner, at (220, −30), the point is shown, and the arrow is aimed at it.
+  const start = await at(page, -100, 0);
+  const aim = await at(page, 220, -30);
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(aim.x, aim.y, { steps: 8 });
+  await page.locator('.dg-port[data-port="N+1"]').waitFor();
+  assert.equal(await page.locator('.dg-port.aimed[data-port="N+1"]').count(), 1);
+  await saved(host, () => page.mouse.up());
+  assert.equal((await storedDiagram(host)).arrows[0].to.port, "N+1");
+
+  // The short sides of B (a sixth of 60 is 10 pixels) do not offer their points at this zoom.
+  const next = await at(page, 100, 100);
+  await page.mouse.move(next.x, next.y);
+  await page.mouse.down();
+  await page.mouse.move((await at(page, 260, 10)).x, (await at(page, 260, 10)).y, { steps: 8 });
+  await page.locator('.dg-port[data-port="E"]').waitFor();
+  assert.equal(await page.locator('.dg-port[data-port="E+1"]').count(), 0);
+  await page.mouse.up();
+});
+
 test("deleting a shape frees the ends of its arrows, where they were; Ctrl+Delete deletes its arrows too", async () => {
   const opened = await openView();
   const { page, host } = opened;
